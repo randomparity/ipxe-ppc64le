@@ -32,6 +32,8 @@ FILE_SECBOOT ( FORBIDDEN );
  */
 
 #include <stdint.h>
+#include <string.h>
+#include <limits.h>
 #include <errno.h>
 #include <byteswap.h>
 #include <ipxe/ieee1275.h>
@@ -151,6 +153,62 @@ int ieee1275_peer ( ieee1275_phandle_t phandle,
 }
 
 /**
+ * Get path of a package
+ *
+ * @v phandle		Package handle
+ * @v buf		Path buffer
+ * @v len		Length of path buffer
+ * @ret rc		Return status code
+ *
+ * On success the path is NUL-terminated within the buffer.
+ */
+int ieee1275_package_to_path ( ieee1275_phandle_t phandle, char *buf,
+			       size_t len ) {
+	ieee1275_cell_t args[3];
+	ieee1275_cell_t ret;
+	int rc;
+
+	/* Leave room for the terminator, which the firmware need not write */
+	if ( ! len )
+		return -ENOSPC;
+	memset ( buf, 0, len );
+	args[0] = phandle;
+	args[1] = ieee1275_ptr ( buf );
+	args[2] = ( len - 1 );
+	if ( ( rc = ieee1275_call ( "package-to-path", 3, 1, args,
+				    &ret ) ) != 0 )
+		return rc;
+	return ( ( ( ( int32_t ) ret < 0 ) || ( ret >= len ) ) ?
+		 -ENOSPC : 0 );
+}
+
+/**
+ * Open a device
+ *
+ * @v path		Device path
+ * @v ihandle		Instance handle to fill in
+ * @ret rc		Return status code
+ */
+int ieee1275_open ( const char *path, ieee1275_ihandle_t *ihandle ) {
+	ieee1275_cell_t args[1] = { ieee1275_ptr ( path ) };
+	int rc;
+
+	if ( ( rc = ieee1275_call ( "open", 1, 1, args, ihandle ) ) != 0 )
+		return rc;
+	return ( *ihandle ? 0 : -ENODEV );
+}
+
+/**
+ * Close an instance
+ *
+ * @v ihandle		Instance handle
+ */
+void ieee1275_close ( ieee1275_ihandle_t ihandle ) {
+
+	ieee1275_call ( "close", 1, 0, &ihandle, NULL );
+}
+
+/**
  * Claim memory
  *
  * @v virt		Address to claim (or zero to let the firmware choose)
@@ -212,17 +270,24 @@ int ieee1275_getprop ( ieee1275_phandle_t phandle, const char *name,
  * @v data		Data buffer
  * @v len		Length of data buffer
  * @ret len		Length read (zero if nothing available), or negative error
+ *
+ * The returned length never exceeds @c len, so that callers may use
+ * it to extend a buffer of that size without further checks.
  */
 int ieee1275_read ( ieee1275_ihandle_t ihandle, void *data, size_t len ) {
 	ieee1275_cell_t args[3] = { ihandle, ieee1275_ptr ( data ), len };
 	ieee1275_cell_t ret;
 	int rc;
 
+	if ( ( len >> 32 ) || ( len > INT_MAX ) )
+		return -ERANGE;
 	if ( ( rc = ieee1275_call ( "read", 3, 1, args, &ret ) ) != 0 )
 		return rc;
 	if ( ( int32_t ) ret == -2 )
 		return 0;
-	return ( ( ( int32_t ) ret < 0 ) ? -EIO : ( int ) ret );
+	if ( ( ( int32_t ) ret < 0 ) || ( ret > len ) )
+		return -EIO;
+	return ret;
 }
 
 /**

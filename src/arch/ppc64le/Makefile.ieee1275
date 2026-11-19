@@ -32,10 +32,4 @@ $(BIN)/%.iso : $(BIN)/%.elf util/genfsimg
 	$(Q)util/genfsimg -o $@ $<
 
 # Drivers to include in the all-drivers build
-#
-# The linker requires the object named for the target's driver list.
-# With no network drivers yet, DRIVERS_ipxe is empty and the target
-# name itself is used, which names no object.  Use the console, which
-# every image includes, instead.
-#
-DRIVER_ipxe	= ieee1275_console
+DRIVERS_ipxe	+= ieee1275_net
