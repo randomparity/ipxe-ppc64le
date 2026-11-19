@@ -116,9 +116,12 @@ static int elf_segment ( struct image *image, const Elf_Ehdr *ehdr,
 
 		/* Place segment relative to the caller's load base.
 		 * A physical address of zero is an offset of zero,
-		 * not an absent address.
+		 * not an absent address.  Ensure that the placed
+		 * segment, and hence any entry point within its
+		 * file-backed portion, cannot wrap the address space.
 		 */
-		if ( ( phdr->p_paddr > ( ~( ( physaddr_t ) 0 ) - *base ) ) ||
+		if ( ( phdr->p_filesz > phdr->p_memsz ) ||
+		     ( phdr->p_paddr > ( ~( ( physaddr_t ) 0 ) - *base ) ) ||
 		     ( phdr->p_memsz > ( ~( ( physaddr_t ) 0 ) -
 					 ( *base + phdr->p_paddr ) ) ) ) {
 			DBGC ( image, "ELF %s segment exceeds address space\n",

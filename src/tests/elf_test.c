@@ -38,6 +38,7 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #undef NDEBUG
 
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include <endian.h>
 #include <ipxe/image.h>
@@ -261,6 +262,16 @@ static void elf_test_exec ( void ) {
 	base = ( ~( ( physaddr_t ) 0 ) - ELF_TEST_PADDR1 + 1 );
 	ok ( elf_test_walk ( elf_test_image, sizeof ( elf_test_image ), &base,
 			     &entry, &max ) != 0 );
+
+	/* A segment with more file data than memory is rejected */
+	memcpy ( copy, elf_test_image, sizeof ( copy ) );
+	ehdr->e_phnum = 1;
+	memset ( ( copy + ehdr->e_phoff + offsetof ( Elf_Phdr, p_memsz ) ), 0,
+		 sizeof ( ( ( Elf_Phdr * ) copy )->p_memsz ) );
+	base = 0x40000000UL;
+	ok ( elf_test_walk ( copy, sizeof ( copy ), &base, &entry,
+			     &max ) != 0 );
+	ok ( elf_test_log.count == 0 );
 
 	/* Segment data outside the image is rejected */
 	base = 0x40000000UL;
