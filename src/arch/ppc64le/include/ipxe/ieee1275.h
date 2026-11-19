@@ -59,6 +59,10 @@ extern int ieee1275_child ( ieee1275_phandle_t parent,
 			    ieee1275_phandle_t *child );
 extern int ieee1275_peer ( ieee1275_phandle_t phandle,
 			   ieee1275_phandle_t *sibling );
+extern int ieee1275_package_to_path ( ieee1275_phandle_t phandle, char *buf,
+				      size_t len );
+extern int ieee1275_open ( const char *path, ieee1275_ihandle_t *ihandle );
+extern void ieee1275_close ( ieee1275_ihandle_t ihandle );
 extern int ieee1275_claim ( unsigned long virt, size_t size, size_t align,
 			    unsigned long *base );
 extern int ieee1275_getprop ( ieee1275_phandle_t phandle, const char *name,
