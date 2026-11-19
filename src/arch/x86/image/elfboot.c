@@ -53,7 +53,7 @@ static int elfboot_exec ( struct image *image ) {
 	int rc;
 
 	/* Load the image using core ELF support */
-	if ( ( rc = elf_load ( image, &entry, &max ) ) != 0 ) {
+	if ( ( rc = elf_load ( image, NULL, &entry, &max ) ) != 0 ) {
 		DBGC ( image, "ELF %s could not load: %s\n",
 		       image->name, strerror ( rc ) );
 		return rc;
@@ -137,7 +137,7 @@ static int elfboot_probe ( struct image *image ) {
 
 	/* Check that this image uses flat physical addressing */
 	if ( ( rc = elf_segments ( image, ehdr, elfboot_check_segment,
-				   &entry, &max ) ) != 0 ) {
+				   NULL, &entry, &max ) ) != 0 ) {
 		DBGC ( image, "ELF %s is not loadable: %s\n",
 		       image->name, strerror ( rc ) );
 		return rc;

@@ -54,9 +54,12 @@ static int elf_load_segment ( struct image *image, const Elf_Phdr *phdr,
 	void *buffer = phys_to_virt ( dest );
 	int rc;
 
-	DBGC ( image, "ELF %s loading segment [%x,%x) to [%lx,%lx,%lx)\n",
-	       image->name, phdr->p_offset, ( phdr->p_offset + phdr->p_filesz ),
-	       dest, ( dest + phdr->p_filesz ), ( dest + phdr->p_memsz ) );
+	DBGC ( image, "ELF %s loading segment [%lx,%lx) to [%lx,%lx,%lx)\n",
+	       image->name, ( ( unsigned long ) phdr->p_offset ),
+	       ( ( unsigned long ) ( phdr->p_offset + phdr->p_filesz ) ),
+	       ( ( unsigned long ) dest ),
+	       ( ( unsigned long ) ( dest + phdr->p_filesz ) ),
+	       ( ( unsigned long ) ( dest + phdr->p_memsz ) ) );
 
 	/* Verify and prepare segment */
 	if ( ( rc = prep_segment ( buffer, phdr->p_filesz,
@@ -79,8 +82,10 @@ static int elf_load_segment ( struct image *image, const Elf_Phdr *phdr,
  * @v ehdr		ELF executable header
  * @v phdr		ELF program header
  * @v process		Segment processor
- * @ret entry		Entry point, if found
- * @ret max		Maximum used address
+ * @v base		Load base, or NULL to use the image's own addresses
+ * @v entry		Entry point (updated if found)
+ * @v max		Maximum used address (updated)
+ * @v found		Entry point found flag (updated)
  * @ret rc		Return status code
  */
 static int elf_segment ( struct image *image, const Elf_Ehdr *ehdr,
@@ -88,10 +93,11 @@ static int elf_segment ( struct image *image, const Elf_Ehdr *ehdr,
 			 int ( * process ) ( struct image *image,
 					     const Elf_Phdr *phdr,
 					     physaddr_t dest ),
-			 physaddr_t *entry, physaddr_t *max ) {
+			 const physaddr_t *base, physaddr_t *entry,
+			 physaddr_t *max, int *found ) {
 	physaddr_t dest;
 	physaddr_t end;
-	unsigned long e_offset;
+	physaddr_t e_offset;
 	int rc;
 
 	/* Do nothing for non-PT_LOAD segments */
@@ -105,17 +111,38 @@ static int elf_segment ( struct image *image, const Elf_Ehdr *ehdr,
 		return -ENOEXEC;
 	}
 
-	/* Find start address: use physical address for preference,
-	 * fall back to virtual address if no physical address
-	 * supplied.
-	 */
-	dest = phdr->p_paddr;
-	if ( ! dest )
-		dest = phdr->p_vaddr;
-	if ( ! dest ) {
-		DBGC ( image, "ELF %s segment loads to physical address 0\n",
-		       image->name );
-		return -ENOEXEC;
+	/* Find start address */
+	if ( base ) {
+
+		/* Place segment relative to the caller's load base.
+		 * A physical address of zero is an offset of zero,
+		 * not an absent address.  Ensure that the placed
+		 * segment, and hence any entry point within its
+		 * file-backed portion, cannot wrap the address space.
+		 */
+		if ( ( phdr->p_filesz > phdr->p_memsz ) ||
+		     ( phdr->p_paddr > ( ~( ( physaddr_t ) 0 ) - *base ) ) ||
+		     ( phdr->p_memsz > ( ~( ( physaddr_t ) 0 ) -
+					 ( *base + phdr->p_paddr ) ) ) ) {
+			DBGC ( image, "ELF %s segment exceeds address space\n",
+			       image->name );
+			return -ENOEXEC;
+		}
+		dest = ( *base + phdr->p_paddr );
+
+	} else {
+
+		/* Use physical address for preference, fall back to
+		 * virtual address if no physical address supplied.
+		 */
+		dest = phdr->p_paddr;
+		if ( ! dest )
+			dest = phdr->p_vaddr;
+		if ( ! dest ) {
+			DBGC ( image, "ELF %s segment loads to physical "
+			       "address 0\n", image->name );
+			return -ENOEXEC;
+		}
 	}
 	end = ( dest + phdr->p_memsz );
 
@@ -127,17 +154,24 @@ static int elf_segment ( struct image *image, const Elf_Ehdr *ehdr,
 	if ( ( rc = process ( image, phdr, dest ) ) != 0 )
 		return rc;
 
-	/* Set execution address, if it lies within this segment */
-	if ( ( e_offset = ( ehdr->e_entry - dest ) ) < phdr->p_filesz ) {
+	/* Set execution address, if it lies within this segment.  A
+	 * caller-supplied base relocates the segment, so only the
+	 * virtual address can identify the entry point in that case.
+	 */
+	if ( ( ! base ) &&
+	     ( ( e_offset = ( ehdr->e_entry - dest ) ) < phdr->p_filesz ) ) {
 		*entry = ehdr->e_entry;
+		*found = 1;
 		DBGC ( image, "ELF %s found physical entry point at %lx\n",
-		       image->name, *entry );
+		       image->name, ( ( unsigned long ) *entry ) );
 	} else if ( ( e_offset = ( ehdr->e_entry - phdr->p_vaddr ) )
 		    < phdr->p_filesz ) {
-		if ( ! *entry ) {
+		if ( ! *found ) {
 			*entry = ( dest + e_offset );
+			*found = 1;
 			DBGC ( image, "ELF %s found virtual entry point at %lx"
-			       " (virt %lx)\n", image->name, *entry,
+			       " (virt %lx)\n", image->name,
+			       ( ( unsigned long ) *entry ),
 			       ( ( unsigned long ) ehdr->e_entry ) );
 		}
 	}
@@ -151,18 +185,28 @@ static int elf_segment ( struct image *image, const Elf_Ehdr *ehdr,
  * @v image		ELF file
  * @v ehdr		ELF executable header
  * @v process		Segment processor
+ * @v base		Load base, or NULL to use the image's own addresses
  * @ret entry		Entry point, if found
  * @ret max		Maximum used address
  * @ret rc		Return status code
+ *
+ * If a load base is supplied, each segment is placed at the load
+ * base plus its physical address (which may be zero), and the
+ * returned entry point is translated to the corresponding location
+ * within the placed segment.  If no load base is supplied, each
+ * segment is placed at its own physical address (or at its virtual
+ * address, if there is no physical address).
  */
 int elf_segments ( struct image *image, const Elf_Ehdr *ehdr,
 		   int ( * process ) ( struct image *image,
 				       const Elf_Phdr *phdr,
 				       physaddr_t dest ),
-		   physaddr_t *entry, physaddr_t *max ) {
+		   const physaddr_t *base, physaddr_t *entry,
+		   physaddr_t *max ) {
 	const Elf_Phdr *phdr;
 	Elf_Off phoff;
 	unsigned int phnum;
+	int found = 0;
 	int rc;
 
 	/* Initialise maximum used address */
@@ -181,13 +225,13 @@ int elf_segments ( struct image *image, const Elf_Ehdr *ehdr,
 			return -ENOEXEC;
 		}
 		phdr = ( image->data + phoff );
-		if ( ( rc = elf_segment ( image, ehdr, phdr, process,
-					  entry, max ) ) != 0 )
+		if ( ( rc = elf_segment ( image, ehdr, phdr, process, base,
+					  entry, max, &found ) ) != 0 )
 			return rc;
 	}
 
 	/* Check for a valid execution address */
-	if ( ! *entry ) {
+	if ( ! found ) {
 		DBGC ( image, "ELF %s entry point %lx outside image\n",
 		       image->name, ( ( unsigned long ) ehdr->e_entry ) );
 		return -ENOEXEC;
@@ -200,11 +244,15 @@ int elf_segments ( struct image *image, const Elf_Ehdr *ehdr,
  * Load ELF image into memory
  *
  * @v image		ELF file
+ * @v base		Load base, or NULL to use the image's own addresses
  * @ret entry		Entry point
  * @ret max		Maximum used address
  * @ret rc		Return status code
+ *
+ * See elf_segments() for the meaning of the load base.
  */
-int elf_load ( struct image *image, physaddr_t *entry, physaddr_t *max ) {
+int elf_load ( struct image *image, const physaddr_t *base, physaddr_t *entry,
+	       physaddr_t *max ) {
 	static const uint8_t e_ident[] = {
 		[EI_MAG0]	= ELFMAG0,
 		[EI_MAG1]	= ELFMAG1,
@@ -227,8 +275,15 @@ int elf_load ( struct image *image, physaddr_t *entry, physaddr_t *max ) {
 		return -ENOEXEC;
 	}
 
+	/* Only little-endian 64-bit images are supported */
+	if ( ( ELFCLASS == ELFCLASS64 ) &&
+	     ( ehdr->e_ident[EI_DATA] != ELFDATA2LSB ) ) {
+		DBGC ( image, "ELF %s is not little-endian\n", image->name );
+		return -ENOEXEC;
+	}
+
 	/* Load ELF segments into memory */
-	if ( ( rc = elf_segments ( image, ehdr, elf_load_segment,
+	if ( ( rc = elf_segments ( image, ehdr, elf_load_segment, base,
 				   entry, max ) ) != 0 )
 		return rc;
 

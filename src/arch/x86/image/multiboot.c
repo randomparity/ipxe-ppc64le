@@ -384,7 +384,7 @@ static int multiboot_load_elf ( struct image *image, physaddr_t *entry,
 	int rc;
 
 	/* Load ELF image*/
-	if ( ( rc = elf_load ( image, entry, max ) ) != 0 ) {
+	if ( ( rc = elf_load ( image, NULL, entry, max ) ) != 0 ) {
 		DBGC ( image, "MULTIBOOT %s ELF image failed to load: %s\n",
 		       image->name, strerror ( rc ) );
 		return rc;
