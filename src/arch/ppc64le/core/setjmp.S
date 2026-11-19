@@ -101,8 +101,8 @@ longjmp:
 	mtlr	%r0
 	ld	%r0, 168(%r3)
 	mtcrf	0xff, %r0
-	/* Force result to non-zero */
-	mr.	%r3, %r4
+	/* Force result to non-zero (val is an int: ignore upper 32 bits) */
+	extsw.	%r3, %r4
 	bnelr
 	li	%r3, 1
 	blr
