@@ -135,6 +135,50 @@ int ieee1275_child ( ieee1275_phandle_t parent, ieee1275_phandle_t *child ) {
 }
 
 /**
+ * Get next sibling of a package
+ *
+ * @v phandle		Package handle
+ * @v sibling		Sibling package handle to fill in
+ * @ret rc		Return status code
+ */
+int ieee1275_peer ( ieee1275_phandle_t phandle,
+		    ieee1275_phandle_t *sibling ) {
+	int rc;
+
+	if ( ( rc = ieee1275_call ( "peer", 1, 1, &phandle, sibling ) ) != 0 )
+		return rc;
+	return ( *sibling ? 0 : -ENOENT );
+}
+
+/**
+ * Claim memory
+ *
+ * @v virt		Address to claim (or zero to let the firmware choose)
+ * @v size		Size of region
+ * @v align		Alignment (or zero to claim exactly at @c virt)
+ * @v base		Base address of claimed region to fill in
+ * @ret rc		Return status code
+ *
+ * All values must fit in a cell: the client interface cannot
+ * describe memory at or above 4GiB.
+ */
+int ieee1275_claim ( unsigned long virt, size_t size, size_t align,
+		     unsigned long *base ) {
+	ieee1275_cell_t args[3] = { virt, size, align };
+	ieee1275_cell_t ret;
+	int rc;
+
+	if ( ( virt | size | align ) >> 32 )
+		return -ERANGE;
+	if ( ( rc = ieee1275_call ( "claim", 3, 1, args, &ret ) ) != 0 )
+		return rc;
+	if ( ( int32_t ) ret == -1 )
+		return -ENOMEM;
+	*base = ret;
+	return 0;
+}
+
+/**
  * Get property value
  *
  * @v phandle		Package handle
