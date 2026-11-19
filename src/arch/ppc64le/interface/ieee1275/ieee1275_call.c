@@ -168,7 +168,8 @@ int ieee1275_claim ( unsigned long virt, size_t size, size_t align,
 	ieee1275_cell_t ret;
 	int rc;
 
-	if ( ( virt | size | align ) >> 32 )
+	if ( ( ( virt | size | align ) >> 32 ) ||
+	     ( size > ( 0x100000000UL - virt ) ) )
 		return -ERANGE;
 	if ( ( rc = ieee1275_call ( "claim", 3, 1, args, &ret ) ) != 0 )
 		return rc;
