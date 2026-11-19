@@ -82,6 +82,9 @@ REQUIRE_OBJECT ( debugcon );
 #ifdef CONSOLE_SBI
 REQUIRE_OBJECT ( sbi_console );
 #endif
+#ifdef CONSOLE_IEEE1275
+REQUIRE_OBJECT ( ieee1275_console );
+#endif
 #ifdef CONSOLE_DMESG
 REQUIRE_OBJECT ( dmesg );
 #endif

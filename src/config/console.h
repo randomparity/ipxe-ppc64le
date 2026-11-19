@@ -48,6 +48,11 @@ FILE_SECBOOT ( PERMITTED );
   #define CONSOLE_SBI		/* RISC-V SBI debug console */
 #endif
 
+/* Console types supported only on Open Firmware platforms */
+#if defined ( PLATFORM_ieee1275 )
+  #define CONSOLE_IEEE1275	/* Open Firmware console */
+#endif
+
 /* Console types supported only on Linux platforms */
 #if defined ( PLATFORM_linux )
   #define CONSOLE_LINUX		/* Default Linux console */

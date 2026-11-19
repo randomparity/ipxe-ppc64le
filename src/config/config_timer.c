@@ -53,6 +53,9 @@ REQUIRE_OBJECT ( acpi_timer );
 #ifdef TIMER_ZICNTR
 REQUIRE_OBJECT ( zicntr );
 #endif
+#ifdef TIMER_PPC64LE
+REQUIRE_OBJECT ( timebase );
+#endif
 #ifdef TIMER_TOD
 REQUIRE_OBJECT ( tod );
 #endif

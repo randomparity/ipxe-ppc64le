@@ -1,0 +1,35 @@
+# -*- makefile -*- : Force emacs to use Makefile mode
+
+# Build a fixed-address executable.  The firmware loads each segment
+# at its physical address, so no runtime relocation is required.
+#
+CFLAGS		+= -fno-pic -fno-pie
+LDFLAGS		+= -no-pie -z max-page-size=0x1000 --no-warn-rwx-segments
+
+# Linker script
+#
+LDSCRIPT	= arch/ppc64le/scripts/ieee1275.lds
+
+# Platform-specific directories containing source files
+#
+SRCDIRS		+= arch/ppc64le/interface/ieee1275
+SRCDIRS		+= arch/ppc64le/prefix
+
+# Media types
+#
+# The ELF image is the linked executable itself, so it must not be
+# compressed or converted to a raw binary.
+#
+NON_AUTO_MEDIA	+= elf
+$(BIN)/%.elf : $(BIN)/%.elf.tmp
+	$(QM)$(ECHO) "  [FINISH] $@"
+	$(Q)$(CP) $< $@
+
+# Drivers to include in the all-drivers build
+#
+# The linker requires the object named for the target's driver list.
+# With no network drivers yet, DRIVERS_ipxe is empty and the target
+# name itself is used, which names no object.  Use the console, which
+# every image includes, instead.
+#
+DRIVER_ipxe	= ieee1275_console
