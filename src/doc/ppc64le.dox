@@ -87,6 +87,26 @@ the banner:
 
 @endcode
 
+@subsection ppc64le_ieee1275_memory Memory map and external heap
+
+The system memory map is built from the memory nodes of the device
+tree (the @c reg property gives the memory present, and the @c
+available property the part that the firmware is not using).  The
+firmware's client interface has 32-bit cells, so iPXE uses only memory
+below 4GiB.
+
+On first use the memory map provider claims the memory for the
+external heap, and reports as usable only the memory that it has
+claimed, so that @c umalloc() returns memory that the firmware knows to
+be in use.  The claimed region is the largest free range below 4GiB
+and above the iPXE image, less its lowest 128MiB (or half of the
+range, if smaller), which is left unclaimed for the firmware's other
+clients.  If the firmware refuses the claim there is no external heap,
+and the shell still starts.
+
+Building with @c DEBUG=ieee1275_memmap,uheap prints the free ranges,
+the claimed region, and the resulting memory map.
+
 @section ppc64le_entropy Entropy
 
 The entropy source for both platforms is the @c DARN instruction,

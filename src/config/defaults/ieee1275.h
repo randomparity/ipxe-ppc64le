@@ -15,8 +15,7 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 
 #define TIMER_PPC64LE
 
-/* Memory map and external heap await the memory map support */
-#define MEMMAP_NULL
+#define MEMMAP_IEEE1275
 #define UMALLOC_UHEAP
 
 /* Providers that await RTAS support */

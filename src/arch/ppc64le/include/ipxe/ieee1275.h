@@ -40,7 +40,8 @@ extern unsigned long ieee1275_entry;
  *
  * The client interface has 32-bit cells.  The image is linked below
  * 2GiB (asserted by the linker script), as are the stack and the heap
- * within it, so any pointer to them fits in a cell.
+ * within it.  The external heap is claimed below 4GiB by the memory
+ * map provider.  Any pointer to them therefore fits in a cell.
  */
 static inline ieee1275_cell_t ieee1275_ptr ( const void *ptr ) {
 	assert ( ( ( unsigned long ) ptr >> 32 ) == 0 );
@@ -56,6 +57,10 @@ extern int ieee1275_finddevice ( const char *path,
 				 ieee1275_phandle_t *phandle );
 extern int ieee1275_child ( ieee1275_phandle_t parent,
 			    ieee1275_phandle_t *child );
+extern int ieee1275_peer ( ieee1275_phandle_t phandle,
+			   ieee1275_phandle_t *sibling );
+extern int ieee1275_claim ( unsigned long virt, size_t size, size_t align,
+			    unsigned long *base );
 extern int ieee1275_getprop ( ieee1275_phandle_t phandle, const char *name,
 			      void *buf, size_t len, size_t *size );
 extern int ieee1275_read ( ieee1275_ihandle_t ihandle, void *data, size_t len );
