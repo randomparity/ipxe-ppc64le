@@ -85,4 +85,15 @@ the banner:
 
 @endcode
 
+@section ppc64le_entropy Entropy
+
+The entropy source for both platforms is the @c DARN instruction,
+introduced in Power ISA 3.0 (POWER9).  The source reads the processor
+version register and reports itself unavailable, without executing
+@c DARN, on earlier processors.  QEMU's default @c pseries CPU is
+POWER8-class, so pass an explicit @c -cpu power9 (or later) to use it.
+On the @c linux platform, the source falls back to @c ENTROPY_LINUX
+when @c DARN is unavailable.  Other processors have no hardware source
+yet.
+
 */
