@@ -58,8 +58,8 @@ input: link the script into the ELF with @c EMBED.  Building the ISO needs @c ge
 or @c xorrisofs.
 
 iPXE prints its banner on the firmware console.  Press Ctrl-B at the
-prompt to reach the iPXE shell.  There is as yet no network driver, so
-only local commands (for example @c echo and @c sleep) are useful.
+prompt to reach the iPXE shell.  Network access is described in @ref
+ppc64le_ieee1275_net.
 
 @subsection ppc64le_ieee1275_kernel Booting with the QEMU -kernel option
 
@@ -106,6 +106,30 @@ and the shell still starts.
 
 Building with @c DEBUG=ieee1275_memmap,uheap prints the free ranges,
 the claimed region, and the resulting memory map.
+
+@subsection ppc64le_ieee1275_net Network devices
+
+Every node in the firmware device tree whose @c device_type is @c
+network becomes an iPXE network device, with its MAC address taken from
+the node's @c local-mac-address property.  Frames are sent and received
+with the client interface @c write and @c read calls on an instance that
+the device opens when it is opened and closes when it is closed, and
+that is therefore also closed when iPXE shuts down.  The firmware
+reports neither link state nor interrupts, so the link is always shown
+as up and the device is polled.  Any adapter that the firmware can
+boot from works, with no native driver.
+
+On QEMU @c pseries, add a @c spapr-vlan NIC; repeat the option for
+more than one:
+
+@code
+
+	qemu-system-ppc64 -M pseries -m 1G -nographic -cdrom src/bin-ppc64le-ieee1275/ipxe.iso -boot d -nic user,model=spapr-vlan
+
+@endcode
+
+Building with @c DEBUG=ieee1275_net prints each device found, and each
+open and close of its firmware instance.
 
 @section ppc64le_entropy Entropy
 
