@@ -39,21 +39,23 @@ only the @c powerpc64le-linux-gnu cross-compiler:
 @endcode
 
 The image is linked at a fixed address, so the firmware loads it
-without relocation.  SLOF loads it from a CHRP boot CD: the ISO needs
-a @c /ppc/bootinfo.txt whose boot script uses backslashes in the path.
-For example, with @c xorriso:
+without relocation.  SLOF loads it from a CHRP boot CD, which the build
+can produce directly.  Use @c EMBED to link a script into the image:
 
 @code
 
-	mkdir -p iso/ppc
-	cp src/bin-ppc64le-ieee1275/ipxe.elf iso/ppc/
-	printf '<chrp-boot>\n<os-name>ipxe</os-name>\n' > iso/ppc/bootinfo.txt
-	printf '<boot-script>boot &device;:\\ppc\\ipxe.elf</boot-script>\n' >> iso/ppc/bootinfo.txt
-	printf '</chrp-boot>\n' >> iso/ppc/bootinfo.txt
-	xorriso -as mkisofs -R -o ipxe.iso iso
-	qemu-system-ppc64 -M pseries -m 1G -nographic -cdrom ipxe.iso -boot d
+	make -C src CROSS_COMPILE=powerpc64le-linux-gnu- bin-ppc64le-ieee1275/ipxe.iso EMBED=script.ipxe
+	qemu-system-ppc64 -M pseries -m 1G -nographic -cdrom src/bin-ppc64le-ieee1275/ipxe.iso -boot d
 
 @endcode
+
+The ISO is plain ISO9660 with Rock Ridge extensions.  It holds the ELF
+as @c /ppc/ipxe.elf and a @c /ppc/bootinfo.txt whose boot script
+names the ELF with backslashes in the path (@c \\ppc\\ipxe.elf), the only
+form SLOF reads.  The ISO is not bootable on BIOS or
+EFI systems.  @c util/genfsimg rejects its @c -s script option with an ELF
+input: link the script into the ELF with @c EMBED.  Building the ISO needs @c genisoimage, @c mkisofs
+or @c xorrisofs.
 
 iPXE prints its banner on the firmware console.  Press Ctrl-B at the
 prompt to reach the iPXE shell.  There is as yet no network driver, so

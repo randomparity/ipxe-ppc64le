@@ -25,6 +25,12 @@ $(BIN)/%.elf : $(BIN)/%.elf.tmp
 	$(QM)$(ECHO) "  [FINISH] $@"
 	$(Q)$(CP) $< $@
 
+# CHRP boot CD, as read by SLOF and PowerVM
+NON_AUTO_MEDIA	+= iso
+$(BIN)/%.iso : $(BIN)/%.elf util/genfsimg
+	$(QM)$(ECHO) "  [GENFSIMG] $@"
+	$(Q)util/genfsimg -o $@ $<
+
 # Drivers to include in the all-drivers build
 #
 # The linker requires the object named for the target's driver list.
