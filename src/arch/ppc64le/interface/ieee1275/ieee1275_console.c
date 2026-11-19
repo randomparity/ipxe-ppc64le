@@ -130,9 +130,12 @@ static int ieee1275_iskey ( void ) {
 		return ieee1275_console_input;
 
 	/* Read and buffer byte from console, if any */
-	if ( ( ieee1275_console_find() == 0 ) && ieee1275_console.in )
-		ieee1275_read ( ieee1275_console.in, &ieee1275_console_input,
-				sizeof ( ieee1275_console_input ) );
+	if ( ( ieee1275_console_find() == 0 ) && ieee1275_console.in ) {
+		if ( ieee1275_read ( ieee1275_console.in,
+				     &ieee1275_console_input,
+				     sizeof ( ieee1275_console_input ) ) != 1 )
+			ieee1275_console_input = 0;
+	}
 
 	return ieee1275_console_input;
 }

@@ -100,8 +100,10 @@ SECTIONS {
     /* End virtual address */
     _end = .;
 
-    /* Firmware call arguments must be addressable in 32 bits */
-    _assert = ASSERT ( ( _end < 0x100000000 ), "image exceeds 4GiB" );
+    /* The prefix forms addresses with lis (a sign-extended 32-bit value),
+     * and firmware call arguments must fit in 32-bit cells.
+     */
+    _assert = ASSERT ( ( _end < 0x80000000 ), "image exceeds 2GiB" );
 
     /* Unwanted sections */
     /DISCARD/ : {

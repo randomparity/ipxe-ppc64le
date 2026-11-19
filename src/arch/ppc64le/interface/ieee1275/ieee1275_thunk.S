@@ -35,6 +35,10 @@
  * MSR on return.  It is the only code that changes the MSR after
  * entry; byte-swapping of the argument cells is done by
  * ieee1275_call().
+ *
+ * The general-purpose registers and the condition register are saved
+ * explicitly.  The code is built without floating-point or vector
+ * registers, so these need no protection.
  */
 
 /** Stack frame size */
@@ -63,6 +67,8 @@ ppc64le_be_call:
 	stdu	%r1, -FRAME(%r1)
 	std	%r2, SAVE(%r1)
 	std	%r13, SAVE+8(%r1)
+	mfcr	%r0
+	std	%r0, SAVE-8(%r1)
 	.set	off, SAVE+16
 	.irp	reg, 14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
 	std	%r\reg, off(%r1)
@@ -103,6 +109,8 @@ be_return_cont:
 	.set	off, off+8
 	.endr
 	ld	%r13, SAVE+8(%r1)
+	ld	%r0, SAVE-8(%r1)
+	mtcr	%r0
 	ld	%r2, SAVE(%r1)
 	addi	%r1, %r1, FRAME
 	ld	%r0, 16(%r1)

@@ -39,7 +39,7 @@ extern unsigned long ieee1275_entry;
  * @ret cell		Cell value
  *
  * The client interface has 32-bit cells.  The image is linked below
- * 4GiB (asserted by the linker script), as are the stack and the heap
+ * 2GiB (asserted by the linker script), as are the stack and the heap
  * within it, so any pointer to them fits in a cell.
  */
 static inline ieee1275_cell_t ieee1275_ptr ( const void *ptr ) {
