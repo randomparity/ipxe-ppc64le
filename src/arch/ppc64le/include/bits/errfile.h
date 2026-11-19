@@ -15,6 +15,8 @@ FILE_SECBOOT ( PERMITTED );
  * @{
  */
 
+#define ERRFILE_ieee1275_call	( ERRFILE_ARCH | ERRFILE_OTHER | 0x00000000 )
+
 /** @} */
 
 #endif /* _BITS_ERRFILE_H */
