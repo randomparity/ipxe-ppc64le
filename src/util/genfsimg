@@ -9,6 +9,7 @@ set -u
 #
 help() {
     echo "usage: ${0} [OPTIONS] foo.lkrn|foo.efi [bar.lkrn|bar.efi,...]"
+    echo "       ${0} [OPTIONS] foo.elf"
     echo
     echo "where OPTIONS are:"
     echo " -h         show this help"
@@ -270,6 +271,7 @@ export MTOOLSRC
 #
 LKRN=
 EFI=
+CHRP=
 DISKLOG=
 for FILENAME ; do
     case "${FILENAME}" in
@@ -324,6 +326,18 @@ for FILENAME ; do
 	    fi
 	    EFI=1
 	    ;;
+	*.elf)
+	    # A CHRP boot CD for IEEE 1275 firmware: the ELF is the
+	    # whole image, so any embedded script is linked into it.
+	    DESTDIR="${ISODIR}/ppc"
+	    DESTFILE=$(basename "${FILENAME}")
+	    if [ -n "${CHRP}" ] ; then
+		echo "${0}: only one ELF input is supported" >&2
+		exit 1
+	    fi
+	    mkdir -p "${DESTDIR}"
+	    CHRP=1
+	    ;;
 	*)
 	    echo "${0}: unrecognised input filename ${FILENAME}" >&2
 	    help
@@ -340,12 +354,42 @@ for FILENAME ; do
     fi
 done
 
+# Check that a CHRP image has a sole ELF input and an ISO output
+#
+if [ -n "${CHRP}" ] ; then
+    if [ -n "${LKRN}${EFI}" ] ; then
+	echo "${0}: an ELF input cannot be combined with other inputs" >&2
+	exit 1
+    fi
+    if [ -z "${ISOIMG}" ] ; then
+	echo "${0}: an ELF input requires an .iso output file" >&2
+	exit 1
+    fi
+    if [ -n "${SCRIPT}" ] ; then
+	echo "${0}: an ELF input cannot use -s (embed the script at" \
+	     "build time)" >&2
+	exit 1
+    fi
+fi
+
 # Configure ISO image, if applicable
 #
 # Note that the BIOS boot files are required even for an EFI-only ISO,
 # since isohybrid will refuse to work without them.
 #
-if [ -n "${ISOIMG}" ] ; then
+if [ -n "${CHRP}" ] ; then
+    # SLOF reads only the boot script, and needs backslashes in its path
+    ISOARGS="-R"
+    FATIMG=
+    cat >"${ISODIR}/ppc/bootinfo.txt" <<EOF
+<chrp-boot>
+<description>iPXE</description>
+<os-name>ipxe</os-name>
+<boot-script>boot &device;:\\ppc\\${DESTFILE}</boot-script>
+</chrp-boot>
+EOF
+fi
+if [ -n "${ISOIMG}" -a -z "${CHRP}" ] ; then
     ISOARGS="-J -R -l"
     copy_syslinux_file "isolinux.bin" "${ISODIR}"
     copy_syslinux_file "ldlinux.c32" "${ISODIR}" 2>/dev/null || true
@@ -356,6 +400,8 @@ if [ -n "${ISOIMG}" ] ; then
     else
 	FATIMG=
     fi
+fi
+if [ -n "${ISOIMG}" ] ; then
     if [ -n "${SOURCE_DATE_EPOCH:-}" ] ; then
 	DATE_FMT="+%Y%m%d%H%M%S00"
 	BUILD_DATE=$(date -u -d "@${SOURCE_DATE_EPOCH}" "${DATE_FMT}" \
@@ -460,7 +506,7 @@ if [ -n "${ISOIMG}" ] ; then
 	echo "${0}: cannot find a suitable mkisofs or equivalent" >&2
 	exit 1
     fi
-    if [ "${MKISOFS}" = "xorrisofs" ] ; then
+    if [ "${MKISOFS}" = "xorrisofs" -a -z "${CHRP}" ] ; then
         ISOARGS="${ISOARGS} -isohybrid-gpt-basdat"
         NOISOHYBRID=1
     fi
@@ -468,7 +514,7 @@ if [ -n "${ISOIMG}" ] ; then
 	    -appid "iPXE - Open Source Network Boot Firmware" \
 	    -publisher "ipxe.org" -sysid "iPXE" -o "${ISOIMG}" \
 	    ${ISOARGS} "${ISODIR}"
-    if [ -z "${NOISOHYBRID}" ] && isohybrid --version >/dev/null 2>&1 ; then
+    if [ -z "${NOISOHYBRID}" -a -z "${CHRP}" ] && isohybrid --version >/dev/null 2>&1 ; then
 	ISOHYBRIDARGS=
 	if [ -n "${EFI}" ] ; then
 	    ISOHYBRIDARGS="${ISOHYBRIDARGS} --uefi"
