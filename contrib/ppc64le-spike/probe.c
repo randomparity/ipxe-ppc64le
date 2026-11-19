@@ -33,8 +33,6 @@ typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned long u64;
 
-#define MAXRET 4
-
 extern u64 be_call ( u64 entry, u64 a0, u64 a1, u64 a2 );
 extern u64 entry_state[];
 
@@ -202,7 +200,7 @@ static void probe_entry ( void ) {
 	kv ( "entry.msr.dr (bit 4)", ( entry_state[6] >> 4 ) & 1 );
 	kv ( "entry.msr.hv (bit 60)", ( entry_state[6] >> 60 ) & 1 );
 	kv ( "entry.entered_big_endian", entry_state[7] );
-	kv ( "entry.r12 (LE direct entry only)", entry_state[12] );
+	kv ( "entry.r12 (0 if entered big-endian)", entry_state[12] );
 	kv ( "entry.r13", entry_state[13] );
 	kv ( "entry.r2", entry_state[10] );
 	kv ( "entry.pvr", entry_state[9] );
@@ -332,6 +330,12 @@ static void probe_net ( void ) {
 		}
 	}
 	kv ( "net arp reply received", got > 0 );
+	{
+		/* The ARP reply was the only frame: this read finds none */
+		u32 in[3] = { ih, A ( rx ), sizeof ( rx ) };
+		kv ( "net read with no frame waiting returned",
+		     ci ( "read", 3, 1, in, 0 ) );
+	}
 	if ( got > 0 ) {
 		put ( "SPIKE net arp reply sender mac =" );
 		for ( i = 0 ; i < 6 ; i++ ) {

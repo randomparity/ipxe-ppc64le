@@ -30,8 +30,8 @@ and optionally `tcpdump`.
     ./run.sh                      # all ELF variants at 1G, plus 2G and 4G
 
 `./run.sh ELF [MEM [OUTDIR]]` runs one ELF. Each run leaves
-`OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines),
-`net.pcap` and `net.txt`. `run.sh` exits non-zero unless every run printed
+`OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines)
+and `net.pcap`, plus `net.txt` if `tcpdump` is installed. `run.sh` exits non-zero unless every run printed
 `SPIKE done`.
 
 Observed with GCC 14.2.0 and binutils 2.44 (`powerpc64le-linux-gnu`),
@@ -40,7 +40,13 @@ QEMU 10.2.2 `-machine pseries` (alias of `pseries-10.2`, default CPU, PVR
 20220719" (upstream tag `qemu-slof-20220719`, commit
 `6b6c16b4b40763507cf1f518096f3c3883c5cf2d`). On an x86_64 host the build
 takes under a second inside a container; `./run.sh` took about 50 seconds
-for its seven runs (roughly 7 seconds each, each ending at `SPIKE done`).
+for its seven runs (roughly 7 seconds each, each ending at `SPIKE done`). The build is the
+`make` line above run with the cross toolchain on its `PATH`; any
+container or host install that provides it will do.
+
+The SLOF line citations below are against the upstream tag; that the
+distribution's package build matches that tag is assumed from its
+"release 20220719" banner, not checked.
 
 ## Results
 
@@ -119,8 +125,9 @@ So on SLOF `claim` does return memory above any smaller assumed limit, up
 to the 4 GiB boundary. Client-interface cells are 32 bits
 (`slof/fs/client.fs:30-33` reads them with `l@`), so addresses of 4 GiB
 and above cannot be passed or returned: this spike could not test them.
-`claim(any, ...)` is best-fit over the free list, not lowest or highest:
-1 MiB came back at `0x3fe04000` at 1G and `0x4000` at 4G.
+`claim(any, ...)` with a nonzero alignment is a best-fit search of the free
+list (`slof/fs/claim.fs:293-328`), so the result is neither lowest nor
+highest: 1 MiB came back at `0x3fe04000` at 1G and `0x4000` at 4G.
 
 ### 4. Raw Ethernet frame through the network node (`spapr-vlan`)
 
@@ -134,8 +141,10 @@ network gateway's MAC (an emulator default). The packet capture agrees:
     52:54:00:12:34:56 > ff:ff:ff:ff:ff:ff, ARP, Request who-has 10.0.2.2 tell 10.0.2.15
     52:55:0a:00:02:02 > 52:54:00:12:34:56, ARP, Reply 10.0.2.2 is-at 52:55:0a:00:02:02
 
-(Emulator-default MACs and user-mode network addresses.) `read` is
-non-blocking and returns `0` when no frame is waiting, so callers poll.
+(Emulator-default MACs and user-mode network addresses.) A second `read` made
+after the reply, with nothing waiting, returned `0` at once; so `read` does
+not block and callers poll. This matches `veth_receive`, which returns 0
+when no frame is queued (`lib/libveth/veth.c:167-203`, tag above).
 
 ### 5. RTAS
 
@@ -156,7 +165,7 @@ block, `r4` = base, in big-endian mode, through the same `be_call` thunk.
 
 The client interface and RTAS are big-endian; the stub runs little-endian.
 `be_call(entry, a0, a1, a2)` therefore: saves `r2`, `r13`-`r31`; computes
-the MSR with LE cleared (SF kept set); points LR at a three-instruction
+the MSR with LE cleared (SF left as it is); points LR at a three-instruction
 big-endian return stub (`mtsrr0 r31; mtsrr1 r30; rfid`); and `rfid`s to
 `entry`. On return the stub restores the little-endian MSR and the thunk
 reloads its registers. Observed against SLOF:
@@ -168,18 +177,20 @@ reloads its registers. Observed against SLOF:
   SLOF's entry swaps the whole register file and MSR with its own saved
   copy (`slof/entry.S:108-143`, `157-162`), so the callee preserves the
   caller's registers and returns in the MSR it was called with.
-- The calls here use SF=1 (the caller's MSR with only LE cleared). Linux
-  calls with SF=0 (section 7); SF=0 was not tried.
+- Only LE is cleared for a call, so the 64-bit variants called with SF=1
+  and the `le32`/`be32` variants (entered with SF clear) called with
+  SF=0, the convention Linux uses (section 7). Both worked on SLOF: the
+  client interface, `claim`, the network node and RTAS all returned the
+  same results in both modes apart from the clock reading.
 - The client-interface `exit` service returns control to SLOF, which goes
-  on to the next boot device. Spinning forever after the last probe instead
-  ended in a SLOF `( 700 ) Program Exception` about a second later; the
-  cause was not investigated, and the spike ends with `exit`.
+  on to the next boot device; the spike ends with `exit`.
 - Calling the client interface without the thunk (little-endian) was not
   tried: SLOF's code is big-endian and cannot be decoded in LE mode.
 
 The endianness polyglot at `_start` is the same mechanism as the kernel's
 `FIXUP_ENDIAN` (`arch/powerpc/include/asm/ppc_asm.h:836-849`, tag `v7.0`);
-its trampoline words were assembled independently and match. It was
+its trampoline words were assembled independently and match, apart from
+an added `li r12,1` that marks a big-endian entry. It was
 exercised through the `be64` and `be32` variants (`entered_big_endian = 1`).
 
 ### 7. Linux kernel Open Firmware entry contract (tag `v7.0`, commit `028ef9c96e96197026887c0f092424679298aae8`)
@@ -248,10 +259,13 @@ expects (a `p_paddr` of 0 is not what is rejected here). The entry
 
 ## Not proven
 
-- Anything on PowerVM or non-SLOF firmware (the call thunk's SF=1 choice,
-  the entry MSR, RMA publication).
+- Anything on PowerVM or non-SLOF firmware (the entry MSR, which SF the
+  firmware wants for calls, RMA publication).
 - `claim` of memory at or above 4 GiB (32-bit cells), and any real RMA
   limit enforcement (QEMU makes the RMA all of RAM).
 - That SLOF can itself boot the distribution `vmlinux` from an ISO; the
   program headers were only read.
-- Why spinning after the last probe raises a SLOF Program Exception.
+- Spinning in a `b .` loop after the last probe, instead of calling
+  `exit`, was seen once to end in a SLOF `( 700 ) Program Exception` about a
+  second later, with a temporary build that no longer exists; it is not
+  reproducible from this tree and its cause is unknown.

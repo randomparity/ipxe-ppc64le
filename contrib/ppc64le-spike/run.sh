@@ -17,7 +17,8 @@
 #
 # Set BOOTINFO=file to use that /ppc/bootinfo.txt (BOOTINFO=/dev/null: empty).
 # Requires qemu-system-ppc64, xorriso, tcpdump (optional) and python3.
-# Per run, OUTDIR holds console.log (the evidence), net.pcap and qemu.out.
+# Per run, OUTDIR holds console.log (the evidence), spike.txt, net.pcap and
+# qemu.out, plus net.txt if tcpdump is installed.
 # Exit status is non-zero unless every run printed "SPIKE done".
 
 set -u
@@ -73,6 +74,7 @@ if [ $# -ge 1 ]; then
 fi
 
 rc=0
+cd "$HERE" || exit 1
 mkdir -p out/variants
 python3 -I "$HERE/mkvariants.py" spike.elf out/variants || exit 1
 for v in le64v2 le64v1 be64 le32 be32; do

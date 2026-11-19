@@ -65,7 +65,8 @@ _start:
 	.long	0xa6035a7d		/* mtsrr0 r10 */
 	.long	0xa6037b7d		/* mtsrr1 r11 */
 	.long	0x2400004c		/* rfid */
-	b	le_common		/* rfid lands here (BE entry only) */
+	li	r9, 0			/* rfid lands here (BE entry only) */
+	b	le_common
 le_direct:
 	mfmsr	r11
 	mr	r9, r12			/* firmware's r12 (entry address) */
