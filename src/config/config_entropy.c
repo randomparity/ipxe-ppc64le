@@ -53,6 +53,9 @@ REQUIRE_OBJECT ( rdrand );
 #ifdef ENTROPY_ZKR
 REQUIRE_OBJECT ( zkr );
 #endif
+#ifdef ENTROPY_DARN
+REQUIRE_OBJECT ( darn );
+#endif
 #ifdef ENTROPY_PRNO
 REQUIRE_OBJECT ( prno );
 #endif

@@ -19,9 +19,11 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #define MEMMAP_NULL
 #define UMALLOC_UHEAP
 
-/* Providers that await RTAS and entropy support */
+/* Providers that await RTAS support */
 #define TIME_NULL
 #define REBOOT_NULL
+
+#define ENTROPY_DARN
 
 #define ACPI_NULL
 #define FDT_NULL
