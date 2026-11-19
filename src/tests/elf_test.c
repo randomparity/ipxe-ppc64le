@@ -161,6 +161,30 @@ static int elf_test_walk ( const void *data, size_t len,
 }
 
 /**
+ * Load an image
+ *
+ * @v data		Image data
+ * @v len		Image length
+ * @v base		Load base
+ * @ret rc		Return status code
+ */
+static int elf_test_load ( const void *data, size_t len,
+			   const physaddr_t *base ) {
+	struct image *image;
+	physaddr_t entry;
+	physaddr_t max;
+	int rc;
+
+	image = image_memory ( "elf", data, len );
+	ok ( image != NULL );
+	if ( ! image )
+		return -1;
+	rc = elf_load ( image, base, &entry, &max );
+	unregister_image ( image );
+	return rc;
+}
+
+/**
  * Perform ELF self-test
  *
  */
@@ -182,6 +206,14 @@ static void elf_test_exec ( void ) {
 	ok ( elf_test_log.dest[1] == ( base + ELF_TEST_PADDR1 ) );
 	ok ( entry == ( base + ELF_TEST_ENTRY_OFFSET ) );
 	ok ( max == ( base + ELF_TEST_PADDR1 + ELF_TEST_MEMSZ1 ) );
+
+	/* The entry point is translated even when the placed segment
+	 * overlaps the image's own virtual address range
+	 */
+	base = ( ELF_TEST_VADDR + 4 );
+	ok ( elf_test_walk ( elf_test_image, sizeof ( elf_test_image ), &base,
+			     &entry, &max ) == 0 );
+	ok ( entry == ( base + ELF_TEST_ENTRY_OFFSET ) );
 
 	/* A load base of zero is valid, as is an entry point of zero */
 	base = 0;
@@ -225,6 +257,25 @@ static void elf_test_exec ( void ) {
 	ehdr->e_entry = 0x1234;
 	ok ( elf_test_walk ( copy, sizeof ( copy ), &base, &entry,
 			     &max ) != 0 );
+
+	/* Big-endian 64-bit images are rejected before any segment is
+	 * prepared.  The test environment has no usable memory, so a
+	 * little-endian image also fails to load but for a different
+	 * reason (segment preparation, rather than the image header).
+	 */
+	if ( ELFCLASS == ELFCLASS64 ) {
+		int rc_be;
+		int rc_le;
+
+		base = 0x40000000UL;
+		memcpy ( copy, elf_test_image, sizeof ( copy ) );
+		rc_le = elf_test_load ( copy, sizeof ( copy ), &base );
+		ehdr->e_ident[EI_DATA] = ( ELFDATA2LSB + 1 );
+		rc_be = elf_test_load ( copy, sizeof ( copy ), &base );
+		ok ( rc_le != 0 );
+		ok ( rc_be != 0 );
+		ok ( rc_be != rc_le );
+	}
 }
 
 /** ELF self-test */
