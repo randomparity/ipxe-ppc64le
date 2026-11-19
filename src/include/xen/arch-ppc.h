@@ -14,7 +14,7 @@
 FILE_LICENCE ( MIT );
 FILE_SECBOOT ( PERMITTED );
 
-#if defined(__XEN__) || defined(__XEN_TOOLS__)
+#if defined(__XEN__) || defined(__XEN_TOOLS__) || defined(__GNUC__)
 #define  int64_aligned_t  int64_t __attribute__((__aligned__(8)))
 #define uint64_aligned_t uint64_t __attribute__((__aligned__(8)))
 #endif
