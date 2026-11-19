@@ -1,0 +1,22 @@
+# -*- makefile -*- : Force emacs to use Makefile mode
+
+# Symbols that the linker or libgcc resolves at the final link, but
+# that the symbol prefixing applied to all iPXE objects renames:
+#
+# - the TOC base referenced by every function's global entry point
+#
+# - the out-of-line general-purpose register save/restore helpers that
+#   the compiler calls at -Os (the floating-point and vector helpers
+#   are not needed since the code is built without such registers)
+#
+PPC64LE_SAVRES	:= $(foreach N,$(shell seq 14 31),\
+		     savegpr0_$(N) restgpr0_$(N) \
+		     savegpr1_$(N) restgpr1_$(N))
+LINUX_CFLAGS	+= -Wl,--defsym,$(SYMBOL_PREFIX).TOC.=.TOC.
+LINUX_CFLAGS	+= $(foreach S,$(PPC64LE_SAVRES),\
+		     -Wl,--defsym,$(SYMBOL_PREFIX)_$(S)=_$(S))
+
+# Include generic Linux Makefile
+#
+MAKEDEPS	+= Makefile.linux
+include Makefile.linux
