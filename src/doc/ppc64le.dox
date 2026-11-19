@@ -1,0 +1,27 @@
+/** @page ppc64le PowerPC64 little-endian (ppc64le) builds
+
+@section ppc64le_linux Linux userspace unit tests
+
+The @c ppc64le architecture currently supports only the @c linux
+platform, which builds iPXE as a 64-bit little-endian ELFv2 Linux
+executable.  This allows the unit test suite to be run on POWER, or
+on any other host using user-mode QEMU.
+
+The build requires a @c powerpc64le-linux-gnu cross-compiler and C
+library.  On Debian and Ubuntu these are provided by the packages @c
+gcc-powerpc64le-linux-gnu and @c libc6-dev-ppc64el-cross, and the
+emulator by the package @c qemu-user-static.
+
+@code
+
+	make -C src CROSS_COMPILE=powerpc64le-linux-gnu- bin-ppc64le-linux/tests.linux
+	qemu-ppc64le-static -L /usr/powerpc64le-linux-gnu src/bin-ppc64le-linux/tests.linux
+
+@endcode
+
+The @c -L option names the directory containing the target dynamic
+loader and C library, and is not required when running natively on
+ppc64le.  A successful run ends with the line "OK: all N tests
+passed".
+
+*/
