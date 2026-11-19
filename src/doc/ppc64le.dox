@@ -2,10 +2,11 @@
 
 @section ppc64le_linux Linux userspace unit tests
 
-The @c ppc64le architecture currently supports only the @c linux
-platform, which builds iPXE as a 64-bit little-endian ELFv2 Linux
-executable.  This allows the unit test suite to be run on POWER, or
-on any other host using user-mode QEMU.
+The @c ppc64le architecture supports two platforms: @c ieee1275 (the
+default, described below) and @c linux.  The @c linux platform builds
+iPXE as a 64-bit little-endian ELFv2 Linux executable.  This allows
+the unit test suite to be run on POWER, or on any other host using
+user-mode QEMU.
 
 The build requires a @c powerpc64le-linux-gnu cross-compiler and C
 library.  On Debian and Ubuntu these are provided by the packages @c
@@ -57,5 +58,31 @@ For example, with @c xorriso:
 iPXE prints its banner on the firmware console.  Press Ctrl-B at the
 prompt to reach the iPXE shell.  There is as yet no network driver, so
 only local commands (for example @c echo and @c sleep) are useful.
+
+@subsection ppc64le_ieee1275_kernel Booting with the QEMU -kernel option
+
+Passing the image to QEMU with @c -kernel does not work by default:
+SLOF prints "Booting from memory..." and then raises a program
+exception (vector 0x700) before iPXE produces any output.  The image
+itself is not at fault.  QEMU does not load a @c -kernel ELF at its
+physical address: it places the low 28 bits of each program header's
+physical address at the machine's @c kernel-addr, which defaults to
+0x400000.  An image linked at 0x400000 is therefore loaded at 0x800000
+(QEMU reports "kernel_addr changed from 0x400000 to 0x800000"), and
+SLOF enters it there.  The code is position-dependent, so it addresses
+its data and zeroes its @c .bss at the link address, which overwrites
+the running copy of the image.
+
+Supporting the default load address would require a relocatable
+image, which is not provided.  Setting @c kernel-addr to zero makes
+QEMU load the image at its link address, and the image then boots to
+the banner:
+
+@code
+
+	qemu-system-ppc64 -M pseries,kernel-addr=0 -m 1G -nographic \
+		-kernel src/bin-ppc64le-ieee1275/ipxe.elf
+
+@endcode
 
 */
