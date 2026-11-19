@@ -3,7 +3,10 @@
 
 /** @file
  *
- * x86 32-bit ELF class
+ * Default ELF class (32-bit)
+ *
+ * This file is included only if the architecture does not provide its
+ * own version of this file.
  *
  */
 

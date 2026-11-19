@@ -3,7 +3,7 @@
 
 /** @file
  *
- * PowerPC64 64-bit ELF class
+ * PowerPC64 ELF class (64-bit)
  *
  */
 

@@ -39,6 +39,7 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 
 #include <stdint.h>
 #include <string.h>
+#include <endian.h>
 #include <ipxe/image.h>
 #include <ipxe/elf.h>
 #include <ipxe/test.h>
@@ -195,6 +196,10 @@ static void elf_test_exec ( void ) {
 	physaddr_t entry;
 	physaddr_t max;
 
+	/* The fixtures are little-endian */
+	if ( __BYTE_ORDER != __LITTLE_ENDIAN )
+		return;
+
 	/* Segments are placed relative to the load base, and the
 	 * entry point is translated to match
 	 */
@@ -235,6 +240,19 @@ static void elf_test_exec ( void ) {
 	ok ( entry == ( ELF_TEST_VADDR + ELF_TEST_ENTRY_OFFSET ) );
 	ok ( max == ( ELF_TEST_VADDR + ELF_TEST_MEMSZ0 ) );
 
+	/* An entry point within the second segment is found by virtual
+	 * address, with or without a load base
+	 */
+	memcpy ( copy, elf_test_image, sizeof ( copy ) );
+	ehdr->e_entry = ( ELF_TEST_VADDR + ELF_TEST_PADDR1 + 4 );
+	base = 0x40000000UL;
+	ok ( elf_test_walk ( copy, sizeof ( copy ), &base, &entry,
+			     &max ) == 0 );
+	ok ( entry == ( base + ELF_TEST_PADDR1 + 4 ) );
+	ok ( elf_test_walk ( copy, sizeof ( copy ), NULL, &entry,
+			     &max ) == 0 );
+	ok ( entry == ( ELF_TEST_PADDR1 + 4 ) );
+
 	/* Segments that would wrap the address space are rejected */
 	base = ( ~( ( physaddr_t ) 0 ) - ELF_TEST_MEMSZ0 + 1 );
 	ok ( elf_test_walk ( elf_test_image, sizeof ( elf_test_image ), &base,
@@ -258,23 +276,23 @@ static void elf_test_exec ( void ) {
 	ok ( elf_test_walk ( copy, sizeof ( copy ), &base, &entry,
 			     &max ) != 0 );
 
-	/* Big-endian 64-bit images are rejected before any segment is
-	 * prepared.  The test environment has no usable memory, so a
-	 * little-endian image also fails to load but for a different
-	 * reason (segment preparation, rather than the image header).
+	/* Big-endian 64-bit images are rejected with the same error as
+	 * an image with an invalid signature, before any segment is
+	 * prepared
 	 */
 	if ( ELFCLASS == ELFCLASS64 ) {
+		int rc_sig;
 		int rc_be;
-		int rc_le;
 
 		base = 0x40000000UL;
 		memcpy ( copy, elf_test_image, sizeof ( copy ) );
-		rc_le = elf_test_load ( copy, sizeof ( copy ), &base );
+		ehdr->e_ident[EI_MAG0] = 0;
+		rc_sig = elf_test_load ( copy, sizeof ( copy ), &base );
+		ehdr->e_ident[EI_MAG0] = ELFMAG0;
 		ehdr->e_ident[EI_DATA] = ( ELFDATA2LSB + 1 );
 		rc_be = elf_test_load ( copy, sizeof ( copy ), &base );
-		ok ( rc_le != 0 );
-		ok ( rc_be != 0 );
-		ok ( rc_be != rc_le );
+		ok ( rc_sig != 0 );
+		ok ( rc_be == rc_sig );
 	}
 }
 
