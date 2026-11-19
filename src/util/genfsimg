@@ -331,6 +331,12 @@ for FILENAME ; do
 	    # whole image, so any embedded script is linked into it.
 	    DESTDIR="${ISODIR}/ppc"
 	    DESTFILE=$(basename "${FILENAME}")
+	    case "${DESTFILE}" in
+		*[!A-Za-z0-9._-]*)
+		    echo "${0}: unsupported ELF filename ${DESTFILE}" >&2
+		    exit 1
+		    ;;
+	    esac
 	    if [ -n "${CHRP}" ] ; then
 		echo "${0}: only one ELF input is supported" >&2
 		exit 1
@@ -514,7 +520,8 @@ if [ -n "${ISOIMG}" ] ; then
 	    -appid "iPXE - Open Source Network Boot Firmware" \
 	    -publisher "ipxe.org" -sysid "iPXE" -o "${ISOIMG}" \
 	    ${ISOARGS} "${ISODIR}"
-    if [ -z "${NOISOHYBRID}" -a -z "${CHRP}" ] && isohybrid --version >/dev/null 2>&1 ; then
+    if [ -z "${NOISOHYBRID}" -a -z "${CHRP}" ] && \
+       isohybrid --version >/dev/null 2>&1 ; then
 	ISOHYBRIDARGS=
 	if [ -n "${EFI}" ] ; then
 	    ISOHYBRIDARGS="${ISOHYBRIDARGS} --uefi"

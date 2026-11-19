@@ -53,9 +53,8 @@ The ISO is plain ISO9660 with Rock Ridge extensions.  It holds the ELF
 as @c /ppc/ipxe.elf and a @c /ppc/bootinfo.txt whose boot script
 names the ELF with backslashes in the path (@c \\ppc\\ipxe.elf), the only
 form SLOF reads.  The ISO is not bootable on BIOS or
-EFI systems.  The script given to @c util/genfsimg with @c -s does not
-apply to an ELF input, which is rejected: the script is linked into the
-ELF with @c EMBED.  Building the ISO needs @c genisoimage, @c mkisofs
+EFI systems.  @c util/genfsimg rejects its @c -s script option with an ELF
+input: link the script into the ELF with @c EMBED.  Building the ISO needs @c genisoimage, @c mkisofs
 or @c xorrisofs.
 
 iPXE prints its banner on the firmware console.  Press Ctrl-B at the
