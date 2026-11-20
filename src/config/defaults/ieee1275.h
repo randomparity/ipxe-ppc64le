@@ -18,9 +18,8 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #define MEMMAP_IEEE1275
 #define UMALLOC_UHEAP
 
-/* Providers that await RTAS support */
-#define TIME_NULL
-#define REBOOT_NULL
+#define TIME_RTAS
+#define REBOOT_RTAS
 
 #define ENTROPY_DARN
 

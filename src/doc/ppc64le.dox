@@ -131,6 +131,38 @@ more than one:
 Building with @c DEBUG=ieee1275_net prints each device found, and each
 open and close of its firmware instance.
 
+@subsection ppc64le_ieee1275_rtas Time, reboot and power off
+
+The time of day, @c reboot and @c poweroff come from RTAS (Run-Time
+Abstraction Services), which the platform enables by default.  RTAS is
+instantiated on first use: iPXE claims page-aligned memory below 4GiB
+for the image, opens the @c /rtas node and calls its @c instantiate-rtas
+method.  RTAS is entered through the same big-endian call thunk as the
+client interface.  A missing or failing @c /rtas node is therefore an
+error for the service that needs it and never prevents startup.
+
+@c time() is the RTAS @c get-time-of-day value.  RTAS errors and dates
+that are not plausible (before 2000, after 2200, or not a calendar
+date) are never converted to a time: the clock then reads as the
+seconds since startup, like the null time source, which precedes the
+validity of any certificate.  The clock is otherwise trusted, as on other
+platforms: a stale but plausible hardware clock is not detected, and
+a failed read in the middle of a run steps the clock between real time
+and the tick count.  Under
+QEMU, set it with @c -rtc @c base=2031-05-17T08:09:10 and read it with
+@c "echo ${unixtime}".
+
+@c reboot calls @c system-reboot, and @c poweroff calls @c power-off.
+Neither returns on success, and neither shuts iPXE down first.  Rebooting
+to firmware setup is not supported.
+
+The RTAS instance is closed and its memory released when iPXE shuts down,
+whether it exits to the firmware or boots an operating system, so that the
+next client can instantiate its own.  The release runs after every other
+shutdown function, including the network devices.  Building with
+@c DEBUG=ieee1275_rtas,ieee1275_rtas_time,ieee1275_rtas_reboot prints
+the instantiation, each failure and the release.
+
 @section ppc64le_entropy Entropy
 
 The entropy source for both platforms is the @c DARN instruction,

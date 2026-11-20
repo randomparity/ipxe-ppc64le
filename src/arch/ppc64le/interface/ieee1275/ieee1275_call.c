@@ -238,6 +238,64 @@ int ieee1275_claim ( unsigned long virt, size_t size, size_t align,
 }
 
 /**
+ * Call a method of an instance
+ *
+ * @v method		Method name
+ * @v ihandle		Instance handle
+ * @v nargs		Number of method argument cells
+ * @v args		Method argument cells
+ * @v nrets		Number of method return cells
+ * @v rets		Method return cells
+ * @ret rc		Return status code
+ *
+ * The firmware's catch result is reported as an error, and the
+ * return cells are filled in only on success.
+ */
+int ieee1275_call_method ( const char *method, ieee1275_ihandle_t ihandle,
+			   unsigned int nargs, const ieee1275_cell_t *args,
+			   unsigned int nrets, ieee1275_cell_t *rets ) {
+	ieee1275_cell_t cargs[IEEE1275_MAX_CELLS];
+	ieee1275_cell_t crets[IEEE1275_MAX_CELLS];
+	unsigned int i;
+	int rc;
+
+	/* Construct argument cells (method name and instance first) */
+	if ( ( nargs + 2 > IEEE1275_MAX_CELLS ) ||
+	     ( nrets + 1 > IEEE1275_MAX_CELLS ) )
+		return -EINVAL;
+	cargs[0] = ieee1275_ptr ( method );
+	cargs[1] = ihandle;
+	for ( i = 0 ; i < nargs ; i++ )
+		cargs[ i + 2 ] = args[i];
+
+	/* Call method */
+	if ( ( rc = ieee1275_call ( "call-method", ( nargs + 2 ),
+				    ( nrets + 1 ), cargs, crets ) ) != 0 )
+		return rc;
+	if ( crets[0] )
+		return -EIO;
+	for ( i = 0 ; i < nrets ; i++ )
+		rets[i] = crets[ i + 1 ];
+
+	return 0;
+}
+
+/**
+ * Release claimed memory
+ *
+ * @v virt		Address of claimed region
+ * @v size		Size of region
+ * @ret rc		Return status code
+ */
+int ieee1275_release ( unsigned long virt, size_t size ) {
+	ieee1275_cell_t args[2] = { virt, size };
+
+	if ( ( virt | size ) >> 32 )
+		return -ERANGE;
+	return ieee1275_call ( "release", 2, 0, args, NULL );
+}
+
+/**
  * Get property value
  *
  * @v phandle		Package handle
