@@ -44,6 +44,18 @@ struct ci_args {
 	u32 cell[12];
 };
 
+/** Whether to instantiate and call RTAS (build with RTAS_CALLS=0 to skip) */
+#ifndef RTAS_CALLS
+#define RTAS_CALLS 1
+#endif
+
+/**
+ * Arguments that GRUB appends when it opens a network node, so that
+ * IBM partition firmware does not run BOOTP (the addresses are dummies)
+ */
+#define NET_OPEN_ARGS \
+	":speed=auto,duplex=auto,1.1.1.1,dummy,1.1.1.1,1.1.1.1,5,5,1.1.1.1,512"
+
 /** Value returned by the firmware for "no such package" or "failed" */
 #define NONE 0xffffffffU
 
@@ -60,6 +72,9 @@ static char net_path[128];
 static u64 tb_freq = 512000000;
 
 static int cpu_seen;
+
+/** Never written: shows whether the firmware zeroed the image's .bss */
+static volatile u8 bss_canary[256];
 
 static u32 bswap32 ( u32 v ) { return __builtin_bswap32 ( v ); }
 
@@ -508,6 +523,25 @@ static void net_listen ( struct net_probe *net, u64 ticks, int sent ) {
 	}
 }
 
+/** Open a network node by name, with arguments appended */
+static u32 net_open ( const char *label, const char *name, const char *args ) {
+	static char path[256];
+	u32 in[1] = { A ( path ) };
+	u32 ih;
+	u64 i, n = 0;
+
+	if ( ( ! name ) || ( ! name[0] ) )
+		return 0;
+	for ( i = 0 ; name[i] ; i++ )
+		path[n++] = name[i];
+	for ( i = 0 ; args[i] ; i++ )
+		path[n++] = args[i];
+	path[n] = 0;
+	ih = ci ( "open", 1, 1, in, 0 );
+	kv ( label, ( ih != 0 ) );
+	return ih;
+}
+
 static void probe_net ( void ) {
 	static struct net_probe net;
 	static u8 frame[64];
@@ -515,6 +549,7 @@ static void probe_net ( void ) {
 	u32 node = ( is_node ( alias ) ? alias : net_ph );
 	u32 i;
 
+	memset ( &net, 0, sizeof ( net ) );
 	kv ( "net alias present", is_node ( alias ) );
 	if ( ! is_node ( node ) ) {
 		say ( "net", "no network node" );
@@ -523,11 +558,13 @@ static void probe_net ( void ) {
 	kv ( "net local-mac-address length", ( u64 ) ( long )
 	     getprop ( node, "local-mac-address", net.mac, 6 ) );
 	kv ( "net locally administered bit", ( net.mac[0] >> 1 ) & 1 );
-	{
-		u32 in[1] = { A ( is_node ( alias ) ? "net" : net_path ) };
-		net.ih = ci ( "open", 1, 1, in, 0 );
-	}
-	kv ( "net open ihandle non-zero", ( net.ih != 0 ) );
+	net.ih = net_open ( "net open (alias)", ( is_node ( alias ) ? "net" : 0 ),
+			    "" );
+	if ( ! net.ih )
+		net.ih = net_open ( "net open (path)", net_path, "" );
+	if ( ! net.ih )
+		net.ih = net_open ( "net open (path with arguments)", net_path,
+				    NET_OPEN_ARGS );
 	if ( ! net.ih )
 		return;
 
@@ -640,6 +677,10 @@ static void probe_rtas ( void ) {
 	kv ( "rtas node present", is_node ( node ) );
 	kv ( "rtas-size", size );
 	kv ( "rtas get-time-of-day token", token );
+	if ( ! RTAS_CALLS ) {
+		say ( "rtas", "not opened or called (built with RTAS_CALLS=0)" );
+		return;
+	}
 	ih = ci ( "open", 1, 1, in, 0 );
 	kv ( "rtas open ihandle non-zero", ( ih != 0 ) );
 	if ( ( ! ih ) || ( ! size ) ) {
@@ -666,6 +707,7 @@ static void probe_darn ( void ) {
 
 void probe_main ( void ) {
 	u32 chosen;
+	u64 i, dirty;
 
 	/* Locate the console before anything can be printed */
 	chosen = finddevice ( "/chosen" );
@@ -673,6 +715,15 @@ void probe_main ( void ) {
 	stdout_ih = bswap32 ( stdout_ih );
 	put ( "SPIKE begin\r\n" );
 	kv ( "msr after first calls", mfmsr() );
+
+	/* Firmware need not zero .bss: count what it left, then start clean */
+	for ( i = 0, dirty = 0 ; i < sizeof ( bss_canary ) ; i++ )
+		dirty += ( bss_canary[i] != 0 );
+	kv ( "bss bytes not zero at entry (of 256)", dirty );
+	rma_size = 0;
+	net_ph = 0;
+	cpu_seen = 0;
+	memset ( net_path, 0, sizeof ( net_path ) );
 	probe_entry();
 	probe_tree();
 	probe_claim();

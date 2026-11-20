@@ -23,6 +23,11 @@ CFLAGS	:= -Os -Wall -Werror -ffreestanding -fno-pic -fno-pie -mcpu=power8 \
 LDFLAGS	:= -nostdlib -static -no-pie -Wl,-T,spike.lds -Wl,--no-warn-rwx-segments \
 	   -Wl,-z,max-page-size=0x1000 -Wl,-z,noexecstack -Wl,--build-id=none
 
+# Set RTAS_CALLS=0 to build a probe that reads the RTAS properties but
+# neither instantiates nor calls RTAS
+RTAS_CALLS ?= 1
+CFLAGS	+= -DRTAS_CALLS=$(RTAS_CALLS)
+
 all : spike.elf spike-sf0.elf
 
 spike.elf : entry.o probe.o spike.lds

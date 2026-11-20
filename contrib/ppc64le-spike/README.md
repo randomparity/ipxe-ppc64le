@@ -17,7 +17,7 @@ version. Anything not observed is listed under "Not proven".
 | `spike.lds` | Link script: one RWX `PT_LOAD` at `0x400000`, entry after a 24-byte descriptor slot |
 | `mkvariants.py` | Derives ELF class/endianness variants from `spike.elf` (container only) |
 | `run.sh` | Builds the ISO, boots QEMU, captures the console and a packet capture; `iso` mode only writes the ISOs |
-| `Makefile` | `make CROSS=<toolchain prefix>`: `spike.elf`, and `spike-sf0.elf`, which calls the firmware in 32-bit mode |
+| `Makefile` | `make CROSS=<toolchain prefix>`: `spike.elf`, and `spike-sf0.elf`, which calls the firmware in 32-bit mode; `RTAS_CALLS=0` builds a probe that makes no RTAS call |
 
 ## Build and run
 
@@ -32,7 +32,9 @@ and optionally `tcpdump`.
 
 `./run.sh ELF [MEM [OUTDIR]]` runs one ELF. The `iso` mode is for firmware
 other than QEMU's: it writes `spike-<variant>.iso` for the five variants
-and for `spike-sf0.elf` (default `OUTDIR`: `out/iso`). Each run leaves
+and for `spike-sf0.elf` (default `OUTDIR`: `out/iso`). In each ISO the
+ELF is `/ppc/spike.elf`: PowerVM firmware does not find a file by a Rock
+Ridge name, so the name has to be a plain ISO9660 one. Each run leaves
 `OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines)
 and `net.pcap`, plus `net.txt` if `tcpdump` is installed. `run.sh` exits non-zero unless every run printed
 `SPIKE done`.
@@ -223,6 +225,10 @@ firmware, and what that showed on SLOF:
   and just above it (fails on SLOF with 1G or 2G, where that is the end of RAM;
   skipped at 4G, which cells cannot address). Claimed
   memory is written only inside that area.
+- The network node is opened as the `net` alias, then by its path, then
+  by its path with the arguments GRUB appends (dummy addresses that stop
+  IBM partition firmware from running BOOTP); the first that works is
+  used. On SLOF the alias opens.
 - The ARP request is a probe (sender address `0.0.0.0`). The probe first
   listens for two seconds and, if it sees an ARP packet from another host,
   asks for that host instead of the QEMU gateway, so no address has to be
@@ -234,7 +240,12 @@ firmware, and what that showed on SLOF:
   `spike-sf0.elf` (calls made with SF and LE clear) SF is set again after
   each call: SLOF preserves `r30`, from which the return stub reloads it.
 - A failed RTAS `claim` or `instantiate-rtas` is printed and the calls
-  that depend on it are skipped. None fails on SLOF.
+  that depend on it are skipped. None fails on SLOF. Built with
+  `RTAS_CALLS=0` the probe prints `rtas-size` and the token and neither
+  opens, instantiates nor calls RTAS.
+- It counts the non-zero bytes in 256 bytes of its own `.bss` before it
+  uses any, then clears the variables it relies on. SLOF zeroes `.bss`
+  (count 0); the stub does not, so the count shows what a firmware does.
 - Last, it executes `darn` (64-bit, conditioned). With QEMU's default CPU
   it returns a value. On a processor or in a mode without the instruction
   it traps and the run ends there, which is why it is last.
@@ -310,13 +321,13 @@ expects (a `p_paddr` of 0 is not what is rejected here). The entry
   began above 2 GiB made `prom_init` fail with "Could not allocate memory for
   RTAS". The kernel also fails to claim its own memory unless iPXE first
   releases its claim on the rest of RAM.
-- #13 (PowerVM): re-run `./run.sh` and compare section 2 and 3; nothing
-  here was observed on PowerVM or Power Firmware.
+- #13 (PowerVM): done; `../ppc64le/powervm-probe-record.md` lists what
+  differs on PowerVM partition firmware.
 
 ## Not proven
 
-- Anything on PowerVM or non-SLOF firmware (the entry MSR, which SF the
-  firmware wants for calls, RMA publication).
+- Anything on non-SLOF firmware other than what
+  `../ppc64le/powervm-probe-record.md` records for PowerVM.
 - `claim` of memory at or above 4 GiB (32-bit cells), and any real RMA
   limit enforcement (QEMU makes the RMA all of RAM).
 - That SLOF can itself boot the distribution `vmlinux` from an ISO; the
