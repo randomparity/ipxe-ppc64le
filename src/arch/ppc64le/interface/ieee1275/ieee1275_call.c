@@ -322,6 +322,33 @@ int ieee1275_getprop ( ieee1275_phandle_t phandle, const char *name,
 }
 
 /**
+ * Set property value
+ *
+ * @v phandle		Package handle
+ * @v name		Property name
+ * @v buf		Value buffer
+ * @v len		Length of value
+ * @ret rc		Return status code
+ *
+ * The firmware creates the property if it does not exist.  The call
+ * succeeds only if the firmware stored the whole value.
+ */
+int ieee1275_setprop ( ieee1275_phandle_t phandle, const char *name,
+		       const void *buf, size_t len ) {
+	ieee1275_cell_t args[4] = {
+		phandle, ieee1275_ptr ( name ), ieee1275_ptr ( buf ), len
+	};
+	ieee1275_cell_t ret;
+	int rc;
+
+	if ( len >> 32 )
+		return -ERANGE;
+	if ( ( rc = ieee1275_call ( "setprop", 4, 1, args, &ret ) ) != 0 )
+		return rc;
+	return ( ( ret == len ) ? 0 : -EIO );
+}
+
+/**
  * Read from an instance
  *
  * @v ihandle		Instance handle

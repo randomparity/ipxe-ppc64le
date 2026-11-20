@@ -254,6 +254,16 @@ expects (a `p_paddr` of 0 is not what is rejected here). The entry
   with backslashes; `<bootfile>` alone does not boot.
 - #11 (kernel hand-off): pass `r3`/`r4` = initrd, `r5` = a client-interface
   entry, set `/chosen` `bootargs`; load the kernel at physical 0 (see 8).
+  Observed in the iPXE implementation (QEMU 10.2.2 `-M pseries`, SLOF
+  20220719, Fedora 44 ppc64le kernel 6.19.10 and its initramfs, `-m 512M` to
+  `-m 4G`): the entry contract in 7 is sufficient as read, with two
+  corrections. The kernel need not be loaded at 0: it is relocatable and
+  copies itself there, so iPXE loads it in low memory it claims above its own
+  image. And that memory must be below `alloc_top` (`0x30000000`, the RMA
+  limit the kernel prints): loading it at the start of a heap claim that
+  began above 2 GiB made `prom_init` fail with "Could not allocate memory for
+  RTAS". The kernel also fails to claim its own memory unless iPXE first
+  releases its claim on the rest of RAM.
 - #13 (PowerVM): re-run `./run.sh` and compare section 2 and 3; nothing
   here was observed on PowerVM or Power Firmware.
 
@@ -264,7 +274,7 @@ expects (a `p_paddr` of 0 is not what is rejected here). The entry
 - `claim` of memory at or above 4 GiB (32-bit cells), and any real RMA
   limit enforcement (QEMU makes the RMA all of RAM).
 - That SLOF can itself boot the distribution `vmlinux` from an ISO; the
-  program headers were only read.
+  program headers were only read (iPXE boots it, see Implications).
 - Spinning in a `b .` loop after the last probe, instead of calling
   `exit`, was seen once to end in a SLOF `( 700 ) Program Exception` about a
   second later, with a temporary build that no longer exists; it is not
