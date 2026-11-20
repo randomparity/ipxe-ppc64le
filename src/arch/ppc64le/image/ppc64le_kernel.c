@@ -29,10 +29,10 @@ FILE_SECBOOT ( FORBIDDEN );
  * ppc64le ELF kernel probe and placement
  *
  * This file makes no firmware call, so that it can be unit-tested in
- * the Linux userspace build.  A kernel is started with the privileges
- * of the loader, so the probe and the placement arithmetic are the
- * only checks standing between a downloaded image and memory that
- * belongs to something else.
+ * the ppc64le Linux userspace build (natively or under qemu-user).  A
+ * kernel is started with the privileges of the loader, so the probe and
+ * the placement arithmetic are the only checks standing between a
+ * downloaded image and memory that belongs to something else.
  */
 
 #include <string.h>

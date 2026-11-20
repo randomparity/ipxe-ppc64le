@@ -170,7 +170,10 @@ The @c kernel, @c initrd and @c boot commands start a little-endian
 installer (check with @c file that it is an ELF executable and not
 compressed).  An image whose machine, class, byte order or file type is
 not that of such a kernel is refused by @c kernel as not executable.
-Every other registered image, such as an @c initrd, is loaded as part
+The image type makes any ppc64le ELF kernel fetched over the network
+executable, so its authenticity is the operator's decision, as for any
+other image (use HTTPS and image trust).  Every other registered image,
+such as an @c initrd, is loaded as part
 of the initrd, in order.  The kernel command line is the one given to
 @c kernel (or set with @c imgargs).  For example:
 
