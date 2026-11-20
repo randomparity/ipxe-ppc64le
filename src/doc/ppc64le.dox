@@ -239,7 +239,7 @@ marked in the script.  Build and run it with:
 
 @endcode
 
-Press @c f or @c r at the menu.  @c -cpu @c power9 is needed for the
+Press @c f or @c r at the menu.  A POWER9 or later CPU, such as @c -cpu @c power9, is needed for the
 entropy source (see @ref ppc64le_entropy), and 4GiB holds the largest
 initrd, the kernel and the installer's own memory use.  The installers
 need a few minutes under TCG.  If name lookups time out, the host's
@@ -274,12 +274,17 @@ the following unchanged, and add only what is listed last.
   counterparts of these, and its own @c config/defaults file.
 - R5, Linux hand-off in two parts.  The ELF kernel image type
   (@c image/elfboot.c) and the placement code (@c image/ppc64le_kernel.c)
-  mention no firmware.  They call the four primitives declared in @c
+  make no firmware calls.  They call the four primitives declared in @c
   ipxe/ppc64le_kernel.h, implemented for Open Firmware in @c
-  ieee1275_boot.c.  A PowerNV platform implements the same four, with
-  a jump that passes a flattened device tree built by @c fdt_create()
-  (currently disabled by @c FDT_NULL in @c config/defaults/ieee1275.h)
-  instead of the client interface entry point.
+  ieee1275_boot.c.  A PowerNV platform implements the same four, with a
+  jump that passes a flattened device tree instead of the client
+  interface entry point.  The tree would be built by @c fdt_create(),
+  which needs a base tree in @c sysfdt (or an FDT image): nothing in @c
+  arch/ppc64le fills @c sysfdt, so the platform would load the one that
+  OPAL passes.  The placement code does carry one Open Firmware
+  constraint: @c PPC64LE_KERNEL_LIMIT keeps the kernel and initrd below
+  4GiB, the reach of the firmware's 32-bit cells, and a PowerNV platform
+  would have to make it per-platform or accept it.
 
 @section ppc64le_entropy Entropy
 

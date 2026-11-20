@@ -22,6 +22,7 @@ set net0/dns 10.0.2.3
 
 # Installer mirrors: each holds the kernel and initrd under ppc/ppc64/
 set fedora https://dl.fedoraproject.org/pub/fedora-secondary/releases/44/Server/ppc64le/os
+# Not download.rockylinux.org: HTTPS to it fails, see e2e-record.md
 set rocky https://mirrors.xtom.com/rocky/9/BaseOS/ppc64le/os
 
 # QEMU: pseries firmware console (hvc0); text installer

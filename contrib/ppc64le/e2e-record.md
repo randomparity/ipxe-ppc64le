@@ -1,10 +1,12 @@
 # ppc64le end-to-end run record: QEMU pseries (SLOF)
 
-One run of `installer-menu.ipxe` for each distribution. Every result below
-was observed in that run. Console text is excerpted from the full capture,
+One run of `installer-menu.ipxe` for each distribution. The results below
+were observed in those runs; the defect section reports separate diagnostic
+runs and says so. Console text is excerpted from the full capture,
 with ANSI escapes removed, progress bars shortened and the elisions marked
 `[...]`; nothing else was edited. Nothing in the capture needed redaction:
-the only addresses are the QEMU user-networking defaults.
+the only addresses are the QEMU user-networking defaults and the public
+resolver named under "Deviations".
 
 This file is the format for later runs (for example the PowerVM run, #14):
 the header names every input, each distribution has an excerpt and a result
@@ -15,7 +17,7 @@ line, and "Not proven" lists what the run does not show.
 | Item | Value |
 |---|---|
 | iPXE | `1887facad` (ppc64le-support), `bin-ppc64le-ieee1275/ipxe.iso` |
-| Build | `make -C src bin-ppc64le-ieee1275/ipxe.iso CROSS=powerpc64le-linux-gnu- EMBED=<script>`, GCC 14.2.0 cross compiler in a container |
+| Build | `make -C src bin-ppc64le-ieee1275/ipxe.iso CROSS=powerpc64le-linux-gnu- EMBED=<script>` (`CROSS_COMPILE=` is equivalent), GCC 14.2.0 cross compiler in a container |
 | Script | `installer-menu.ipxe`, with one edit (see "Deviations") |
 | Emulator | QEMU 10.2.2 `-M pseries -cpu power9`, TCG, SLOF release 20220719 |
 | Command | `qemu-system-ppc64 -M pseries -cpu power9 -smp 4 -m 4G -nographic -cdrom ipxe.iso -boot d -nic user,model=spapr-vlan` |
@@ -94,17 +96,20 @@ Result: pass, as for Fedora.
 `imgfetch https://download.rockylinux.org/pub/rocky/9/BaseOS/ppc64le/os/media.repo`
 fails with `Error 0x420c6020` (`EPIPE` from the HTTP core), and a repeat
 within the same session with "Operation not permitted" (`TLS` fatal alert).
-Observed facts:
+Observed facts, from separate diagnostic runs rather than the two above:
 
-- The same fetch fails with the same error from an x86_64 BIOS build of the
-  same tree (`0x420c6001`, with HTTPS enabled by a local override), so it is
+- The same fetch fails with the same error (`EPIPE`; only the low byte of
+  the code is platform-specific, `0x420c6001` here) from an x86_64 BIOS
+  build of the same tree with HTTPS enabled by a local override, so it is
   not specific to ppc64le.
 - Certificate validation succeeds. With `DEBUG=tls,httpcore:2` the server
   sends a NewSessionTicket and then a close_notify alert before iPXE has sent
   the HTTP request. For a server that works, the request is sent immediately
   after the client Finished.
 - The same fetch works against four other Rocky mirrors and against
-  `dl.fedoraproject.org`. The failing names answer with `Via: varnish` headers, so they appear to be CDN-fronted.
+  `dl.fedoraproject.org`. Both failing names, `download.rockylinux.org` and
+  `dl.rockylinux.org`, answer with `Via: varnish` headers, so they appear
+  to be CDN-fronted.
 - Repeating the fetch after the certificate chain is cached still fails, so
   slow validation is not the cause.
 
@@ -115,6 +120,8 @@ not fixed or worked around here.
 
 - PowerVM, POWER8, or a CPU other than `-cpu power9`; the default `pseries`
   CPU was not run.
+- The script as checked in (DNS `10.0.2.3`): the runs used the `1.1.1.1`
+  edit above.
 - Guest memory below 4 GiB, or more than one NIC.
 - Anything past the first installer prompt: no install was performed.
 - The fetches were not compared with the published checksums; HTTPS and the
