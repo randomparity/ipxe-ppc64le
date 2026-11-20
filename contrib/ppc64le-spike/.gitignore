@@ -1,3 +1,4 @@
 out/
 *.o
-spike.elf
+.flags
+spike*.elf

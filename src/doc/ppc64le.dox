@@ -222,6 +222,27 @@ instead of a client interface supplies its own.  Only SLOF on QEMU has
 been tested: PowerVM is not covered.  Building with @c DEBUG=elfboot,ieee1275_memmap,ieee1275_boot
 prints the load addresses and the layout.
 
+@section ppc64le_powervm PowerVM
+
+The ISO has been booted on a PowerVM logical partition (POWER9,
+partition firmware FW950) from virtual optical media: the firmware reads
+@c /ppc/bootinfo.txt, loads the 64-bit little-endian ELF without a
+wrapper or a CHRP note, and enters it in little-endian mode.  iPXE
+reaches its banner and runs an embedded script.  Keep the ELF's file
+name a plain ISO9660 one such as @c ipxe.elf: SLOF finds neither a
+longer nor a hyphenated Rock Ridge name, and PowerVM firmware did not
+find names that were both.
+
+Four things do not work there yet.  The firmware runs BOOTP and then
+fails when the network node is opened without arguments, so no network
+device can be opened.  Only about 109MiB of the 256MiB real-mode area
+is free and nothing above it can be claimed, which is less than an
+installer initrd.  The firmware's RTAS image is about 19MiB, above the
+1MiB that the RTAS module accepts, so time, reboot and power off cannot
+work.  And RTAS itself is unproven: the image that was run had the RTAS
+time and reboot providers replaced by the null providers.  @c
+contrib/ppc64le/powervm-probe-record.md has the observations.
+
 @section ppc64le_e2e Installer boot on QEMU
 
 @c contrib/ppc64le/installer-menu.ipxe is an example embedded script

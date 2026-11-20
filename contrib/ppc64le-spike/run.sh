@@ -14,9 +14,13 @@
 #
 # Usage: ./run.sh                    build the ELF variants and run them all
 #        ./run.sh ELF [MEM [OUTDIR]] run one ELF
+#        ./run.sh iso [OUTDIR]       only write one ISO per ELF, for firmware
+#                                    other than QEMU's (default OUTDIR: out/iso
+#                                    beside this script)
 #
 # Set BOOTINFO=file to use that /ppc/bootinfo.txt (BOOTINFO=/dev/null: empty).
-# Requires qemu-system-ppc64, xorriso, tcpdump (optional) and python3.
+# Requires qemu-system-ppc64, xorriso, tcpdump (optional) and python3; the
+# iso mode needs only xorriso and python3.
 # Per run, OUTDIR holds console.log (the evidence), spike.txt, net.pcap and
 # qemu.out, plus net.txt if tcpdump is installed.
 # Exit status is non-zero unless every run printed "SPIKE done".
@@ -26,13 +30,15 @@ QEMU=${QEMU:-qemu-system-ppc64}
 LIMIT=${LIMIT:-60}
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-run_one () { # elf mem outdir
-	elf=$1 mem=$2 out=$3
-	mkdir -p "$out/iso/ppc"
-	cp "$elf" "$out/iso/ppc/spike.elf"
+VARIANTS="le64v2 le64v1 be64 le32 be32"
+
+make_iso () { # elf outdir: writes outdir/spike.iso
+	elf=$1 out=$2
+	mkdir -p "$out/iso/ppc" || return 1
+	cp "$elf" "$out/iso/ppc/spike.elf" || return 1
 	rm -f "$out/iso/ppc/bootinfo.txt"
 	if [ -n "${BOOTINFO:-}" ]; then
-		cp "$BOOTINFO" "$out/iso/ppc/bootinfo.txt"
+		cp "$BOOTINFO" "$out/iso/ppc/bootinfo.txt" || return 1
 	else
 		cat > "$out/iso/ppc/bootinfo.txt" <<'BOOTINFO'
 <chrp-boot>
@@ -43,7 +49,12 @@ run_one () { # elf mem outdir
 </chrp-boot>
 BOOTINFO
 	fi
-	xorriso -as mkisofs -quiet -R -o "$out/spike.iso" "$out/iso" || return 1
+	xorriso -as mkisofs -quiet -R -o "$out/spike.iso" "$out/iso"
+}
+
+run_one () { # elf mem outdir
+	elf=$1 mem=$2 out=$3
+	make_iso "$elf" "$out" || return 1
 	: > "$out/console.log"
 	"$QEMU" -machine pseries -m "$mem" -nographic -monitor none \
 		-serial "file:$out/console.log" -no-reboot \
@@ -66,6 +77,28 @@ BOOTINFO
 	grep -aq 'SPIKE done' "$out/console.log"
 }
 
+absolute () { # path: print it relative to the caller's directory
+	case $1 in
+	/*) echo "$1" ;;
+	*) echo "$PWD/$1" ;;
+	esac
+}
+
+if [ "${1:-}" = iso ]; then
+	dest=$HERE/out/iso
+	[ $# -ge 2 ] && dest=$(absolute "$2")
+	[ -n "${BOOTINFO:-}" ] && BOOTINFO=$(absolute "$BOOTINFO")
+	cd "$HERE" || exit 1
+	mkdir -p out/variants "$dest" || exit 1
+	python3 -I "$HERE/mkvariants.py" spike.elf out/variants || exit 1
+	cp spike-sf0.elf out/variants/spike-sf0.elf || exit 1
+	for v in $VARIANTS sf0; do
+		make_iso "out/variants/spike-$v.elf" "out/iso-$v" &&
+			mv "out/iso-$v/spike.iso" "$dest/spike-$v.iso" || exit 1
+	done
+	exit 0
+fi
+
 if [ $# -ge 1 ]; then
 	run_one "$1" "${2:-1G}" "${3:-out}"
 	rc=$?
@@ -77,10 +110,11 @@ rc=0
 cd "$HERE" || exit 1
 mkdir -p out/variants
 python3 -I "$HERE/mkvariants.py" spike.elf out/variants || exit 1
-for v in le64v2 le64v1 be64 le32 be32; do
+for v in $VARIANTS; do
 	run_one "out/variants/spike-$v.elf" 1G "out/$v-1G" ||
 		{ echo "FAILED: $v"; rc=1; }
 done
+run_one spike-sf0.elf 1G out/sf0-1G || { echo "FAILED: sf0"; rc=1; }
 for mem in 2G 4G; do
 	run_one out/variants/spike-le64v2.elf $mem "out/le64v2-$mem" ||
 		{ echo "FAILED: le64v2 $mem"; rc=1; }
