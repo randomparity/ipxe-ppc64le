@@ -102,11 +102,13 @@ without a CHRP partition entry in the ISO:
 
 The same ELFs stored as `spike.elf`, `be32.elf` or `le64.elf` loaded.
 Whether length or the hyphen is what fails was not separated here. This is
-not a difference from SLOF: checked afterwards on QEMU, SLOF loads
-`spike.elf` and fails with `failed to load CHRP boot loader` for
-`spike-le64v2.elf`, `spikelonger.elf` and `sp-ke.elf` alike. Neither
-firmware uses the Rock Ridge name. `ipxe.elf`, the name `util/genfsimg`
-uses, is found by both.
+not a difference from SLOF. Checked afterwards on QEMU 10.0.13 (SLOF
+"release 20230918") with ISOs made by hand, the ELF and the boot script
+renamed: SLOF loads `spike.elf` and fails with `failed to load CHRP boot
+loader` for `spike-le64v2.elf`, `spikelonger.elf` and `sp-ke.elf` alike.
+SLOF does not use the Rock Ridge name, and nothing seen on PowerVM shows
+that its firmware does. `ipxe.elf`, the name `util/genfsimg` uses, is
+found by both.
 
 ### Entry state (`le64v2`)
 

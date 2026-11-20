@@ -28,15 +28,13 @@ LDFLAGS	:= -nostdlib -static -no-pie -Wl,-T,spike.lds -Wl,--no-warn-rwx-segments
 RTAS_CALLS ?= 1
 CFLAGS	+= -DRTAS_CALLS=$(RTAS_CALLS)
 
+# Discard every output when the compiler or its flags change, so that
+# RTAS_CALLS=0 cannot silently reuse objects built with RTAS calls.
+# This runs while the makefile is read, before any file time is used.
+$(shell echo '$(CC) $(CFLAGS)' | cmp -s - .flags || \
+	{ rm -f *.o spike*.elf ; echo '$(CC) $(CFLAGS)' > .flags ; })
+
 all : spike.elf spike-sf0.elf
-
-# Discard every object when the compiler or its flags change, so that
-# RTAS_CALLS=0 cannot silently reuse objects built with RTAS calls
-.flags : FORCE
-	@echo '$(CC) $(CFLAGS)' | cmp -s - $@ || \
-		{ rm -f *.o spike*.elf ; echo '$(CC) $(CFLAGS)' > $@ ; }
-
-FORCE :
 
 spike.elf : entry.o probe.o spike.lds
 	$(CC) $(LDFLAGS) -o $@ entry.o probe.o
@@ -45,13 +43,13 @@ spike.elf : entry.o probe.o spike.lds
 spike-sf0.elf : entry-sf0.o probe.o spike.lds
 	$(CC) $(LDFLAGS) -o $@ entry-sf0.o probe.o
 
-entry-sf0.o : entry.S .flags
+entry-sf0.o : entry.S
 	$(CC) $(CFLAGS) -DCALL_SF0 -Wa,-mregnames -c -o $@ $<
 
-%.o : %.S .flags
+%.o : %.S
 	$(CC) $(CFLAGS) -Wa,-mregnames -c -o $@ $<
 
-%.o : %.c .flags
+%.o : %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean :

@@ -39,9 +39,10 @@ which build an ISO holds.
 `./run.sh ELF [MEM [OUTDIR]]` runs one ELF. The `iso` mode is for firmware
 other than QEMU's: it writes `spike-<variant>.iso` for the five variants
 and for `spike-sf0.elf` (default `OUTDIR`: `out/iso`). In each ISO the
-ELF is `/ppc/spike.elf`: neither SLOF nor PowerVM firmware finds a file
-by a Rock Ridge name, so the name has to be a plain ISO9660 one (SLOF
-fails on `spikelonger.elf` and on `sp-ke.elf`). Each run leaves
+ELF is `/ppc/spike.elf`, a plain ISO9660 name. SLOF does not find a file
+by a Rock Ridge name (it fails on `spikelonger.elf` and on `sp-ke.elf`,
+tried with ISOs made by hand), and PowerVM firmware did not find the long,
+hyphenated names tried there. Each run leaves
 `OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines)
 and `net.pcap`, plus `net.txt` if `tcpdump` is installed. `run.sh` exits non-zero unless every run printed
 `SPIKE done`.
