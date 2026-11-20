@@ -56,6 +56,8 @@ static void entropy_sample ( struct entropy_source *source ) {
 		/* Collect one block of samples */
 		rc = entropy_enable ( source );
 		ok ( rc == 0 );
+		if ( rc != 0 )
+			return;
 		for ( j = 0 ; j < SAMPLE_BLOCKSIZE ; j++ ) {
 			rc = get_noise ( source, &samples[j] );
 			ok ( rc == 0 );
