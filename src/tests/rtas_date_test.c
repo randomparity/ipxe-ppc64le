@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Michael Brown <mbrown@fensystems.co.uk>.
+ * Copyright (C) 2026 David Christensen
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -173,6 +173,8 @@ static void rtas_date_test_exec ( void ) {
 	/* Accepted dates convert to the expected seconds since the Epoch */
 	epoch ( 2031, 5, 17, 8, 9, 10, 1936771750ULL );
 	epoch ( 2024, 2, 29, 12, 34, 56, 1709210096ULL );
+	epoch ( 2000, 2, 29, 0, 0, 0, 951782400ULL );
+	epoch ( 2200, 12, 31, 23, 59, 59, 7289654399ULL );
 }
 
 /** RTAS date validation self-test */
