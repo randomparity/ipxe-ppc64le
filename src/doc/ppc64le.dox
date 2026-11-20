@@ -222,6 +222,65 @@ instead of a client interface supplies its own.  Only SLOF on QEMU has
 been tested: PowerVM is not covered.  Building with @c DEBUG=elfboot,ieee1275_memmap,ieee1275_boot
 prints the load addresses and the layout.
 
+@section ppc64le_e2e Installer boot on QEMU
+
+@c contrib/ppc64le/installer-menu.ipxe is an example embedded script
+that sets a static IPv4 address (no DHCP), shows a menu and boots a
+Fedora or Rocky Linux installer: @c kernel and @c initrd fetched over
+HTTPS from the distribution mirror, and the mirror passed to the
+installer as its repository.  The values that belong to QEMU's user
+networking (address, gateway, DNS server and the @c hvc0 console) are
+marked in the script.  Build and run it with:
+
+@code
+
+	make -C src CROSS_COMPILE=powerpc64le-linux-gnu- bin-ppc64le-ieee1275/ipxe.iso EMBED=../contrib/ppc64le/installer-menu.ipxe
+	qemu-system-ppc64 -M pseries -cpu power9 -smp 4 -m 4G -nographic -cdrom src/bin-ppc64le-ieee1275/ipxe.iso -boot d -nic user,model=spapr-vlan
+
+@endcode
+
+Press @c f or @c r at the menu.  @c -cpu @c power9 is needed for the
+entropy source (see @ref ppc64le_entropy), and 4GiB holds the largest
+initrd, the kernel and the installer's own memory use.  The installers
+need a few minutes under TCG.  If name lookups time out, the host's
+resolver may not be usable through QEMU's DNS proxy at 10.0.2.3: set @c
+net0/dns to a reachable server.
+
+Both installers were run to their first interactive screen, the text
+mode prompt of anaconda, and the console is recorded in
+@c contrib/ppc64le/e2e-record.md.  That record also lists what was not
+proven.
+
+@subsection ppc64le_e2e_powernv Reuse by a PowerNV platform
+
+A PowerNV platform (OPAL firmware, not part of this work) would reuse
+the following unchanged, and add only what is listed last.
+
+- R1, one ABI and firmware calls in one place.  The ELFv2 little-endian
+  build (@c arch/ppc64le/Makefile, @c bits/ headers, @c core/setjmp.S) is
+  shared by the @c linux and @c ieee1275 platforms.  The Open Firmware
+  and RTAS calls are reached only through @c ppc64le_be_call() in @c
+  ieee1275_thunk.S, called from @c ieee1275_call.c and @c
+  ieee1275_rtas.c in @c arch/ppc64le/interface/ieee1275/.  OPAL would
+  add its own thunk and call module beside them.
+- R2, firmware-neutral architecture layer.  @c arch/ppc64le/core
+  (@c timebase.c, @c darn.c, @c setjmp.S, @c rtas_date.c) and @c
+  arch/ppc64le/image contain no firmware calls.  The timebase code needs
+  only @c timebase_frequency() and the entropy source reads the
+  processor version register.  Not neutral are the @c bits/time.h,
+  @c bits/reboot.h and @c bits/memmap.h headers, which include the
+  RTAS and Open Firmware provider macros, and @c rtas_date.c, which
+  converts the RTAS date format; a PowerNV platform needs its own
+  counterparts of these, and its own @c config/defaults file.
+- R5, Linux hand-off in two parts.  The ELF kernel image type
+  (@c image/elfboot.c) and the placement code (@c image/ppc64le_kernel.c)
+  mention no firmware.  They call the four primitives declared in @c
+  ipxe/ppc64le_kernel.h, implemented for Open Firmware in @c
+  ieee1275_boot.c.  A PowerNV platform implements the same four, with
+  a jump that passes a flattened device tree built by @c fdt_create()
+  (currently disabled by @c FDT_NULL in @c config/defaults/ieee1275.h)
+  instead of the client interface entry point.
+
 @section ppc64le_entropy Entropy
 
 The entropy source for both platforms is the @c DARN instruction,
