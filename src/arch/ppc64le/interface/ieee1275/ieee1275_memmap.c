@@ -312,6 +312,34 @@ static void ieee1275_memmap_init ( void ) {
 }
 
 /**
+ * Release claimed memory above a given address
+ *
+ * @v keep_end		End of the memory to keep claimed (rounded up to a page)
+ * @ret rc		Return status code
+ *
+ * Releases the part of the memory claimed for the external heap that
+ * lies above the kept memory, so that an operating system that claims
+ * memory for itself is not refused it.  The caller must have finished
+ * with every part of the heap that is not kept, and must not use the
+ * memory map afterwards.  The claimed region is never grown, and a
+ * kept end outside it is refused without a firmware call.
+ */
+int ieee1275_memmap_trim ( uint64_t keep_end ) {
+	uint64_t keep;
+	int rc;
+
+	if ( ( keep_end < ieee1275_start ) || ( keep_end > ieee1275_end ) )
+		return -EINVAL;
+	keep = ( ( keep_end + PAGE_SIZE - 1 ) & ~( ( uint64_t ) PAGE_SIZE - 1 ) );
+	if ( keep >= ieee1275_end )
+		return 0;
+	if ( ( rc = ieee1275_release ( keep, ( ieee1275_end - keep ) ) ) != 0 )
+		return rc;
+	ieee1275_end = keep;
+	return 0;
+}
+
+/**
  * Describe memory region from system memory map
  *
  * @v min		Minimum address

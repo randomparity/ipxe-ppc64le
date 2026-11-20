@@ -72,6 +72,9 @@ extern int ieee1275_call_method ( const char *method,
 extern int ieee1275_release ( unsigned long virt, size_t size );
 extern int ieee1275_getprop ( ieee1275_phandle_t phandle, const char *name,
 			      void *buf, size_t len, size_t *size );
+extern int ieee1275_setprop ( ieee1275_phandle_t phandle, const char *name,
+			      const void *buf, size_t len );
+extern int ieee1275_memmap_trim ( uint64_t keep_end );
 extern int ieee1275_read ( ieee1275_ihandle_t ihandle, void *data, size_t len );
 extern int ieee1275_write ( ieee1275_ihandle_t ihandle, const void *data,
 			    size_t len );
