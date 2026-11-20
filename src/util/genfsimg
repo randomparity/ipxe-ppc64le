@@ -218,9 +218,11 @@ if [ $# -eq 0 ] ; then
     exit 1
 fi
 
-# Create temporary working directory
+# Create temporary working directory, removed on any exit
 #
 WORKDIR=$(mktemp -d "${OUTFILE}.XXXXXX")
+trap 'rm -rf "${WORKDIR}"' EXIT
+trap 'exit 1' HUP INT TERM
 ISODIR="${WORKDIR}/iso"
 FATDIR="${WORKDIR}/fat"
 MTOOLSRC="${WORKDIR}/mtoolsrc"
@@ -532,7 +534,3 @@ if [ -n "${ISOIMG}" ] ; then
 	isohybrid ${ISOHYBRIDARGS} "${ISOIMG}"
     fi
 fi
-
-# Clean up temporary working directory
-#
-rm -rf "${WORKDIR}"
