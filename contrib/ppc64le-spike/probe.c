@@ -35,6 +35,7 @@ typedef unsigned long u64;
 
 extern u64 be_call ( u64 entry, u64 a0, u64 a1, u64 a2 );
 extern u64 entry_state[];
+extern u64 call_sf0;
 
 /** Client interface argument block (32-bit big-endian cells) */
 struct ci_args {
@@ -715,6 +716,7 @@ void probe_main ( void ) {
 	stdout_ih = bswap32 ( stdout_ih );
 	put ( "SPIKE begin\r\n" );
 	kv ( "built with RTAS_CALLS", RTAS_CALLS );
+	kv ( "built with CALL_SF0", call_sf0 );
 	kv ( "msr after first calls", mfmsr() );
 
 	/* Firmware need not zero .bss: count what it left, then start clean */

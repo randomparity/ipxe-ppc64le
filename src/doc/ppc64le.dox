@@ -228,9 +228,9 @@ The ISO has been booted on a PowerVM logical partition (POWER9,
 partition firmware FW950) from virtual optical media: the firmware reads
 @c /ppc/bootinfo.txt, loads the 64-bit little-endian ELF without a
 wrapper or a CHRP note, and enters it in little-endian mode.  iPXE
-reaches its banner and runs an embedded script.  Short file names such
-as @c ipxe.elf are found; the firmware did not find longer, hyphenated
-Rock Ridge names, and which property matters was not determined.
+reaches its banner and runs an embedded script.  As on SLOF, the ELF
+needs a plain ISO9660 file name such as @c ipxe.elf: neither firmware
+finds a file by a longer or hyphenated Rock Ridge name.
 
 Four things do not work there yet.  The firmware runs BOOTP and then
 fails when the network node is opened without arguments, so no network

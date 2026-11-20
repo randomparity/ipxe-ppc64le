@@ -103,7 +103,7 @@ le_common:
 	lis	r1, stack_top@ha
 	addi	r1, r1, stack_top@l
 	li	r0, 0
-	std	r0, 0(r1)
+	stdu	r0, -32(r1)		/* minimal frame, zero back chain */
 	bl	probe_main
 	nop
 	b	.
@@ -163,6 +163,17 @@ be_return_cont:
 	mtlr	r0
 	blr
 	.size	be_call, . - be_call
+
+	/* Whether be_call() clears MSR[SF], for the probe to print */
+	.data
+	.balign	8
+	.globl	call_sf0
+call_sf0:
+#ifdef CALL_SF0
+	.quad	1
+#else
+	.quad	0
+#endif
 
 	.bss
 	.balign	16

@@ -24,6 +24,7 @@ prints no MAC or IP address.
 | iPXE | `make -C src bin-ppc64le-ieee1275/ipxe.iso CROSS_COMPILE=powerpc64le-linux-gnu- EMBED=../contrib/ppc64le/installer-menu.ipxe`, source as `ppc64le-support` at `8e9744fff`, with one local change (see "Deviations") |
 | Boot | The ISO loaded into the partition's virtual optical device, that device as the only entry of the boot list, normal-mode activation; some runs instead from the firmware prompt (see "Firmware prompt") |
 | Console | captured through the management console; no key was sent to a probe or to iPXE |
+| Media identity | the name of the image loaded in the optical device was read back before each activation; the console does not show it (the probe as run printed neither `built with` line) |
 
 Two partitions of the same shape were used, 17 activations in all: six on
 the first, eleven on its replacement. Eight of them tested file naming and
@@ -47,7 +48,7 @@ hypotheses that turned out wrong (see "ELF acceptance").
 | Area | SLOF | PowerVM firmware | Needs code |
 |---|---|---|---|
 | ELF acceptance | all five variants load and run | `le64v2`, `le32`, `be32` load and run; `le64v1` and `be64` trap at entry | no: iPXE is `le64v2` |
-| File name in `bootinfo.txt` | long Rock Ridge name found | short names were found; longer, hyphenated names were not | no: `ipxe.elf` is found; documented |
+| File name in `bootinfo.txt` | plain ISO9660 names only | the same, as far as tested | no: not a difference; `ipxe.elf` is found |
 | Entry state, `le64v2` | MSR `0x8000000000003001`, `r12 = r13 =` entry | MSR `0x8000000000003003` (RI also set), `r12 =` entry, `r13 = 0` | no |
 | `.bss` | zero at entry | not zeroed | no: `elfprefix.S` zeroes it |
 | Real-mode area | first memory node covers all RAM; `claim` works anywhere in RAM | 256 MiB; the largest free range is about 109 MiB; nothing above it can be claimed | yes: #38 (memory provider) |
@@ -100,8 +101,12 @@ without a CHRP partition entry in the ISO:
     Firmware is now retrying the entries in the bootlist.
 
 The same ELFs stored as `spike.elf`, `be32.elf` or `le64.elf` loaded.
-Whether length or the hyphen is what fails was not separated. `ipxe.elf`,
-the name `util/genfsimg` uses, is found.
+Whether length or the hyphen is what fails was not separated here. This is
+not a difference from SLOF: checked afterwards on QEMU, SLOF loads
+`spike.elf` and fails with `failed to load CHRP boot loader` for
+`spike-le64v2.elf`, `spikelonger.elf` and `sp-ke.elf` alike. Neither
+firmware uses the Rock Ridge name. `ipxe.elf`, the name `util/genfsimg`
+uses, is found by both.
 
 ### Entry state (`le64v2`)
 
@@ -165,7 +170,9 @@ and then of the path, each produced
     BOOTP request retry attempt: 4
             !BA01B015 !
 
-and returned no instance. `open` of the path followed by
+and returned no instance, about two minutes after it was called (the
+reference codes for the start of BOOTP and for its failure are 127 seconds
+apart). `open` of the path followed by
 `:speed=auto,duplex=auto,` and the dummy addresses GRUB uses returned an
 instance at once. With it:
 
@@ -194,7 +201,8 @@ printed nothing more from the probe, then
 
     Lost connection to the Managed System...
 
-and the run ended. The step was not repeated and no other RTAS call was
+and the run ended. The first partition was not used again. The step was
+not repeated and no other RTAS call was
 made, so RTAS on PowerVM is unproven: instantiation, time of day, and a
 second instantiation by a kernel. The cause is not established (#40).
 
@@ -250,7 +258,8 @@ are from normal-mode activations.
   restarts the partition (#38).
 - A kernel hand-off, HTTPS, or any fetch (#14).
 - That the SLOF network `open` accepts the arguments used here.
-- Which property of a file name the firmware rejects.
+- Which property of a file name PowerVM firmware rejects (SLOF rejects
+  both a long name and a hyphen).
 - A processor compatibility mode older than ISA 3.0, POWER10 or later,
   another firmware level, or a partition with more than one network or
   optical device.
