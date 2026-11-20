@@ -1,0 +1,61 @@
+#!ipxe
+#
+# Example embedded script for the ppc64le ieee1275 platform: apply
+# static IPv4 settings (no DHCP), show a menu, and boot a Fedora or Rocky
+# Linux installer fetched over HTTPS.
+#
+# Build:  make -C src CROSS_COMPILE=powerpc64le-linux-gnu- \
+#              bin-ppc64le-ieee1275/ipxe.iso \
+#              EMBED=../contrib/ppc64le/installer-menu.ipxe
+#
+# See src/doc/ppc64le.dox for the QEMU command.
+#
+# Values marked "QEMU:" are those of QEMU user-mode networking
+# (-nic user,model=spapr-vlan).  Replace them for another network.
+# Nothing else in this script depends on the emulator.
+
+# QEMU: guest address, netmask, gateway and DNS server of user networking
+set net0/ip 10.0.2.15
+set net0/netmask 255.255.255.0
+set net0/gateway 10.0.2.2
+set net0/dns 10.0.2.3
+
+# Installer mirrors: each holds the kernel and initrd under ppc/ppc64/
+set fedora https://dl.fedoraproject.org/pub/fedora-secondary/releases/44/Server/ppc64le/os
+set rocky https://mirrors.xtom.com/rocky/9/BaseOS/ppc64le/os
+
+# QEMU: pseries firmware console (hvc0); text installer
+set args console=hvc0 inst.text
+set netargs ip=${net0/ip}::${net0/gateway}:${net0/netmask}:installer::none nameserver=${net0/dns}
+
+ifopen net0 || goto failed
+
+:menu
+menu ppc64le installer
+item --key f fedora Fedora 44 Server
+item --key r rocky Rocky Linux 9
+item --key s shell iPXE shell
+choose --default fedora target || goto failed
+goto ${target}
+
+:fedora
+set os ${fedora}
+goto boot
+
+:rocky
+set os ${rocky}
+goto boot
+
+:boot
+kernel ${os}/ppc/ppc64/vmlinuz ${args} ${netargs} inst.repo=${os} || goto failed
+initrd ${os}/ppc/ppc64/initrd.img || goto failed
+boot || goto failed
+
+:shell
+shell || goto menu
+goto menu
+
+:failed
+echo Boot failed, returning to the menu
+prompt --timeout 5000 Press any key || goto menu
+goto menu
