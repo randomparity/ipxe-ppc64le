@@ -26,6 +26,7 @@ INCDIRS		:= arch/$(ARCH)/include $(INCDIRS)
 # PowerPC64-specific directories containing source files
 #
 SRCDIRS		+= arch/ppc64le/core
+SRCDIRS		+= arch/ppc64le/image
 
 # Include platform-specific Makefile
 #
