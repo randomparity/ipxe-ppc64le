@@ -23,10 +23,17 @@ CFLAGS	:= -Os -Wall -Werror -ffreestanding -fno-pic -fno-pie -mcpu=power8 \
 LDFLAGS	:= -nostdlib -static -no-pie -Wl,-T,spike.lds -Wl,--no-warn-rwx-segments \
 	   -Wl,-z,max-page-size=0x1000 -Wl,-z,noexecstack -Wl,--build-id=none
 
-all : spike.elf
+all : spike.elf spike-sf0.elf
 
 spike.elf : entry.o probe.o spike.lds
 	$(CC) $(LDFLAGS) -o $@ entry.o probe.o
+
+# The same probe, calling the firmware in 32-bit mode
+spike-sf0.elf : entry-sf0.o probe.o spike.lds
+	$(CC) $(LDFLAGS) -o $@ entry-sf0.o probe.o
+
+entry-sf0.o : entry.S
+	$(CC) $(CFLAGS) -DCALL_SF0 -Wa,-mregnames -c -o $@ $<
 
 %.o : %.S
 	$(CC) $(CFLAGS) -Wa,-mregnames -c -o $@ $<

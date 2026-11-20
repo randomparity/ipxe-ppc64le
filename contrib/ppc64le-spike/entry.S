@@ -35,7 +35,8 @@
  *
  * Both the Open Firmware client interface and RTAS are big-endian, so
  * be_call() switches MSR[LE] off with rfid around each call and
- * switches it back on return (the thunk owns the mode switch).
+ * switches it back on return (the thunk owns the mode switch).  Built
+ * with CALL_SF0, it also clears MSR[SF] for the call, as Linux does.
  */
 
 #define STACK_SIZE 0x8000
@@ -138,6 +139,9 @@ be_call:
 	mtlr	r10			/* callee returns into BE stub */
 	li	r9, 1
 	andc	r9, r30, r9		/* MSR with LE clear */
+#ifdef CALL_SF0
+	rldicl	r9, r9, 0, 1		/* and SF clear (32-bit mode) */
+#endif
 	mtsrr0	r12
 	mtsrr1	r9
 	rfid

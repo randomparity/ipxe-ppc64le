@@ -44,7 +44,22 @@ struct ci_args {
 	u32 cell[12];
 };
 
+/** Value returned by the firmware for "no such package" or "failed" */
+#define NONE 0xffffffffU
+
 static u32 stdout_ih;
+
+/** Real-mode area: size of the memory node whose base is zero */
+static u64 rma_size;
+
+/** First network node found by the tree walk */
+static u32 net_ph;
+static char net_path[128];
+
+/** Timebase ticks per second (from the first CPU node) */
+static u64 tb_freq = 512000000;
+
+static int cpu_seen;
 
 static u32 bswap32 ( u32 v ) { return __builtin_bswap32 ( v ); }
 
@@ -53,6 +68,14 @@ static u64 strlen ( const char *s ) {
 	while ( s[n] )
 		n++;
 	return n;
+}
+
+static int streq ( const char *a, const char *b ) {
+	while ( *a && ( *a == *b ) ) {
+		a++;
+		b++;
+	}
+	return ( *a == *b );
 }
 
 static void *memset ( void *p, int c, u64 n ) {
@@ -124,10 +147,59 @@ static int getprop ( u32 ph, const char *name, void *buf, u32 len ) {
 	return ( int ) ci ( "getprop", 4, 1, in, 0 );
 }
 
+static int getproplen ( u32 ph, const char *name ) {
+	u32 in[2] = { ph, A ( name ) };
+	return ( int ) ci ( "getproplen", 2, 1, in, 0 );
+}
+
 static u32 prop32 ( u32 ph, const char *name ) {
 	u32 v = 0;
 	getprop ( ph, name, &v, 4 );
 	return bswap32 ( v );
+}
+
+static u32 child ( u32 ph ) {
+	u32 in[1] = { ph };
+	return ci ( "child", 1, 1, in, 0 );
+}
+
+static u32 peer ( u32 ph ) {
+	u32 in[1] = { ph };
+	return ci ( "peer", 1, 1, in, 0 );
+}
+
+static int is_node ( u32 ph ) {
+	return ( ( ph != 0 ) && ( ph != NONE ) );
+}
+
+static u64 mfmsr ( void ) {
+	u64 msr;
+	__asm__ volatile ( "mfmsr %0" : "=r" ( msr ) );
+	return msr;
+}
+
+static u64 mftb ( void ) {
+	u64 tb;
+	__asm__ volatile ( "mftb %0" : "=r" ( tb ) );
+	return tb;
+}
+
+/** Read big-endian cells as one value */
+static u64 cells ( const u8 *p, u32 count ) {
+	u64 v = 0;
+	u32 i;
+	for ( i = 0 ; i < ( count * 4 ) ; i++ )
+		v = ( ( v << 8 ) | p[i] );
+	return v;
+}
+
+/** Print a 32-bit property, or that it is absent */
+static void kvprop32 ( const char *key, u32 ph, const char *name ) {
+	if ( getproplen ( ph, name ) == 4 ) {
+		kv ( key, prop32 ( ph, name ) );
+	} else {
+		say ( key, "absent" );
+	}
 }
 
 /** Print the names and lengths of all properties of a node */
@@ -158,7 +230,7 @@ static void list_props ( const char *label, u32 ph ) {
 }
 
 static void hexdump_prop ( const char *label, u32 ph, const char *name ) {
-	static u8 buf[64];
+	static u8 buf[128];
 	int len = getprop ( ph, name, buf, sizeof ( buf ) );
 	int i;
 
@@ -172,6 +244,8 @@ static void hexdump_prop ( const char *label, u32 ph, const char *name ) {
 			      "0123456789abcdef"[buf[i] & 15], 0 };
 		put ( c );
 	}
+	if ( len > ( int ) sizeof ( buf ) )
+		put ( "..." );
 	put ( "\r\n" );
 }
 
@@ -209,24 +283,138 @@ static void probe_entry ( void ) {
 	kv ( "ci.first_dword", *( u64 * ) entry_state[3] );
 }
 
+/** Print a memory node; note the real-mode area */
+static void node_memory ( u32 ph, u32 acells, u32 scells ) {
+	static u8 reg[16];
+	int len = getprop ( ph, "reg", reg, sizeof ( reg ) );
+
+	hexdump_prop ( "  reg", ph, "reg" );
+	hexdump_prop ( "  available", ph, "available" );
+	if ( ( acells + scells ) > 4 )
+		return;
+	if ( ( len >= ( int ) ( ( acells + scells ) * 4 ) ) &&
+	     ( cells ( reg, acells ) == 0 ) )
+		rma_size = cells ( ( reg + ( acells * 4 ) ), scells );
+}
+
+/** Print a network node; remember the first */
+static void node_network ( u32 ph, const char *path ) {
+	static char text[64];
+	u64 i;
+
+	memset ( text, 0, sizeof ( text ) );
+	getprop ( ph, "compatible", text, ( sizeof ( text ) - 1 ) );
+	say ( "  compatible", text );
+	list_props ( "network node", ph );
+	if ( net_ph )
+		return;
+	net_ph = ph;
+	for ( i = 0 ; path[i] ; i++ )
+		net_path[i] = path[i];
+}
+
+/** Print the first CPU node */
+static void node_cpu ( u32 ph ) {
+	if ( cpu_seen++ )
+		return;
+	kvprop32 ( "  cpu-version", ph, "cpu-version" );
+	kvprop32 ( "  timebase-frequency", ph, "timebase-frequency" );
+	if ( getproplen ( ph, "timebase-frequency" ) == 4 )
+		tb_freq = prop32 ( ph, "timebase-frequency" );
+}
+
+/** Walk the device tree, printing memory, network and CPU nodes */
+static void walk ( u32 ph, u32 acells, u32 scells, unsigned depth ) {
+	static char type[32], path[128];
+
+	for ( ; is_node ( ph ) ; ph = peer ( ph ) ) {
+		memset ( type, 0, sizeof ( type ) );
+		getprop ( ph, "device_type", type, ( sizeof ( type ) - 1 ) );
+		if ( streq ( type, "memory" ) || streq ( type, "network" ) ||
+		     streq ( type, "cpu" ) ) {
+			u32 in[3] = { ph, A ( path ), ( sizeof ( path ) - 1 ) };
+			memset ( path, 0, sizeof ( path ) );
+			ci ( "package-to-path", 3, 1, in, 0 );
+			put ( "SPIKE node " );
+			put ( type );
+			put ( " " );
+			put ( path );
+			put ( "\r\n" );
+			if ( streq ( type, "memory" ) ) {
+				node_memory ( ph, acells, scells );
+			} else if ( streq ( type, "network" ) ) {
+				node_network ( ph, path );
+			} else {
+				node_cpu ( ph );
+			}
+		}
+		if ( depth )
+			walk ( child ( ph ), acells, scells, ( depth - 1 ) );
+	}
+}
+
+/** List the property names of a node that may be absent */
+static void list_optional ( const char *path ) {
+	u32 ph = finddevice ( path );
+
+	if ( is_node ( ph ) ) {
+		list_props ( path, ph );
+	} else {
+		say ( path, "absent" );
+	}
+}
+
 static void probe_tree ( void ) {
 	static char text[128];
 	u32 root = finddevice ( "/" );
 	u32 chosen = finddevice ( "/chosen" );
-	u32 mem = finddevice ( "/memory@0" );
+	u32 acells = 2, scells = 1;
 
 	list_props ( "/", root );
 	list_props ( "/chosen", chosen );
-	list_props ( "/memory@0", mem );
-	hexdump_prop ( "/memory@0 reg", mem, "reg" );
+	if ( getproplen ( root, "#address-cells" ) == 4 )
+		acells = prop32 ( root, "#address-cells" );
+	if ( getproplen ( root, "#size-cells" ) == 4 )
+		scells = prop32 ( root, "#size-cells" );
+	kv ( "/ #address-cells", acells );
+	kv ( "/ #size-cells", scells );
+	walk ( child ( root ), acells, scells, 6 );
+	kv ( "real-mode area size (memory node at 0)", rma_size );
+	list_optional ( "/ibm,dynamic-reconfiguration-memory" );
+	list_optional ( "/rtas" );
 	memset ( text, 0, sizeof ( text ) );
-	getprop ( chosen, "bootargs", text, sizeof ( text ) - 1 );
-	say ( "/chosen bootargs", text );
-	memset ( text, 0, sizeof ( text ) );
-	getprop ( chosen, "bootpath", text, sizeof ( text ) - 1 );
-	say ( "/chosen bootpath", text );
+	getprop ( finddevice ( "/openprom" ), "model", text,
+		  ( sizeof ( text ) - 1 ) );
+	say ( "/openprom model", text );
+	kv ( "/chosen bootargs length",
+	     ( u64 ) ( long ) getproplen ( chosen, "bootargs" ) );
+	kv ( "/chosen bootpath length",
+	     ( u64 ) ( long ) getproplen ( chosen, "bootpath" ) );
 	hexdump_prop ( "/chosen linux,initrd-start", chosen,
 		       "linux,initrd-start" );
+}
+
+/** Claim 1MiB at a fixed address; touch it only inside the real-mode area */
+static void claim_at ( u32 addr ) {
+	u32 r;
+
+	put ( "SPIKE claim@" );
+	puthex ( addr );
+	put ( " 1MiB -> " );
+	r = claim ( addr, 0x100000, 0 );
+	puthex ( r );
+	put ( "\r\n" );
+	if ( r != addr )
+		return;
+	if ( ( ( u64 ) addr + 0x100000 ) <= rma_size ) {
+		volatile u64 *p = ( volatile u64 * ) ( u64 ) r;
+		*p = 0x5a5aa5a512345678UL;
+		kv ( "  real-mode store/load round trip ok",
+		     *p == 0x5a5aa5a512345678UL );
+	} else {
+		say ( "  claimed above the real-mode area", "not dereferenced" );
+	}
+	release ( addr, 0x100000 );
 }
 
 static void probe_claim ( void ) {
@@ -237,114 +425,143 @@ static void probe_claim ( void ) {
 	u32 r;
 	unsigned i;
 
-	for ( i = 0 ; i < sizeof ( where ) / sizeof ( where[0] ) ; i++ ) {
-		put ( "SPIKE claim@" );
-		puthex ( where[i] );
-		put ( " 1MiB -> " );
-		r = claim ( where[i], 0x100000, 0 );
-		puthex ( r );
-		put ( "\r\n" );
-		if ( r == where[i] ) {
-			volatile u64 *p = ( volatile u64 * ) ( u64 ) r;
-			*p = 0x5a5aa5a512345678UL;
-			kv ( "  real-mode store/load round trip ok",
-			     *p == 0x5a5aa5a512345678UL );
-			release ( where[i], 0x100000 );
-		}
+	for ( i = 0 ; i < sizeof ( where ) / sizeof ( where[0] ) ; i++ )
+		claim_at ( where[i] );
+	if ( ( rma_size >= 0x200000 ) && ( rma_size < 0x100000000UL ) ) {
+		put ( "SPIKE next two claims: top of the real-mode area, "
+		      "then just above it\r\n" );
+		claim_at ( rma_size - 0x100000 );
+		claim_at ( rma_size );
 	}
 	r = claim ( 0, 0x100000, 0x1000 );
 	kv ( "claim(any,1MiB,4KiB)", r );
-	if ( r != 0xffffffff )
+	if ( r != NONE )
 		release ( r, 0x100000 );
 	r = claim ( 0, 0x10000000, 0x1000 );
 	kv ( "claim(any,256MiB,4KiB)", r );
-	if ( r != 0xffffffff )
+	if ( r != NONE )
 		release ( r, 0x10000000 );
 	r = claim ( 0, 0x40000000, 0x1000 );
 	kv ( "claim(any,1GiB,4KiB)", r );
-	if ( r != 0xffffffff )
+	if ( r != NONE )
 		release ( r, 0x40000000 );
 }
 
 /** Spin for approximately the given number of timebase ticks */
 static void spin ( u64 ticks ) {
-	u64 start, now;
-	__asm__ volatile ( "mftb %0" : "=r" ( start ) );
-	do {
-		__asm__ volatile ( "mftb %0" : "=r" ( now ) );
-	} while ( ( now - start ) < ticks );
+	u64 start = mftb();
+
+	while ( ( mftb() - start ) < ticks ) {
+		/* Nothing */
+	}
+}
+
+/** Network probe state */
+struct net_probe {
+	u32 ih;
+	u8 mac[6];
+	u8 target[4];
+	unsigned frames;
+	unsigned empty;
+	int last_empty;
+	int learned;
+	int replied;
+};
+
+/**
+ * Read frames for a while
+ *
+ * Before the request is sent, the sender of any ARP packet seen
+ * becomes the target (a host known to be present).  Afterwards, an
+ * ARP reply addressed to this node ends the wait.
+ */
+static void net_listen ( struct net_probe *net, u64 ticks, int sent ) {
+	static u8 rx[1600];
+	u64 start = mftb();
+	int len, i, ours;
+
+	net->frames = 0;
+	while ( ( ( mftb() - start ) < ticks ) && ( ! net->replied ) ) {
+		u32 in[3] = { net->ih, A ( rx ), sizeof ( rx ) };
+		len = ( int ) ci ( "read", 3, 1, in, 0 );
+		if ( len <= 0 ) {
+			net->empty++;
+			net->last_empty = len;
+			spin ( tb_freq / 100 );
+			continue;
+		}
+		net->frames++;
+		if ( ( len < 42 ) || ( rx[12] != 0x08 ) || ( rx[13] != 0x06 ) )
+			continue;
+		for ( ours = 1, i = 0 ; i < 6 ; i++ ) {
+			if ( rx[( sent ? 32 : 22 ) + i] != net->mac[i] )
+				ours = 0;
+		}
+		if ( sent ) {
+			net->replied = ( ours && ( rx[21] == 2 ) );
+		} else if ( ( ! ours ) && ( ! net->learned ) &&
+			    ( rx[28] | rx[29] | rx[30] | rx[31] ) ) {
+			for ( i = 0 ; i < 4 ; i++ )
+				net->target[i] = rx[28 + i];
+			net->learned = 1;
+		}
+	}
 }
 
 static void probe_net ( void ) {
-	static u8 mac[6], frame[64], rx[1600];
-	static char path[96];
-	u32 node = finddevice ( "net" );
-	u32 aliases = finddevice ( "/aliases" );
-	u32 ih, i, n = 0;
-	int got = -1;
+	static struct net_probe net;
+	static u8 frame[64];
+	u32 alias = finddevice ( "net" );
+	u32 node = ( is_node ( alias ) ? alias : net_ph );
+	u32 i;
 
-	memset ( path, 0, sizeof ( path ) );
-	getprop ( aliases, "net", path, sizeof ( path ) - 1 );
-	say ( "net alias path", path );
-	kv ( "net node phandle", node );
-	getprop ( node, "local-mac-address", mac, 6 );
-	put ( "SPIKE net local-mac-address =" );
-	for ( i = 0 ; i < 6 ; i++ ) {
-		put ( " " );
-		puthex ( mac[i] );
-	}
-	put ( "\r\n" );
-	{ u32 in[1] = { A ( "net" ) }; ih = ci ( "open", 1, 1, in, 0 ); }
-	kv ( "net open ihandle", ih );
-	if ( ! ih )
+	kv ( "net alias present", is_node ( alias ) );
+	if ( ! is_node ( node ) ) {
+		say ( "net", "no network node" );
 		return;
+	}
+	kv ( "net local-mac-address length", ( u64 ) ( long )
+	     getprop ( node, "local-mac-address", net.mac, 6 ) );
+	kv ( "net locally administered bit", ( net.mac[0] >> 1 ) & 1 );
+	{
+		u32 in[1] = { A ( is_node ( alias ) ? "net" : net_path ) };
+		net.ih = ci ( "open", 1, 1, in, 0 );
+	}
+	kv ( "net open ihandle non-zero", ( net.ih != 0 ) );
+	if ( ! net.ih )
+		return;
+
+	/* Fallback target: the QEMU user-mode network gateway */
+	net.target[0] = 10;
+	net.target[2] = 2;
+	net.target[3] = 2;
+	net_listen ( &net, ( 2 * tb_freq ), 0 );
+	kv ( "net frames seen before send", net.frames );
+	kv ( "net arp target learned from traffic", net.learned );
+
+	/* ARP probe: sender address 0.0.0.0, so no host caches it */
 	memset ( frame, 0, sizeof ( frame ) );
 	for ( i = 0 ; i < 6 ; i++ ) {
 		frame[i] = 0xff;
-		frame[6 + i] = mac[i];
+		frame[6 + i] = net.mac[i];
+		frame[22 + i] = net.mac[i];
 	}
 	frame[12] = 0x08; frame[13] = 0x06;	/* ARP */
 	frame[15] = 1; frame[16] = 0x08; frame[18] = 6; frame[19] = 4;
 	frame[21] = 1;				/* request */
-	for ( i = 0 ; i < 6 ; i++ )
-		frame[22 + i] = mac[i];
-	frame[28] = 10; frame[30] = 2; frame[31] = 15;	/* 10.0.2.15 */
-	frame[38] = 10; frame[40] = 2; frame[41] = 2;	/* 10.0.2.2 */
+	for ( i = 0 ; i < 4 ; i++ )
+		frame[38 + i] = net.target[i];
 	{
-		u32 in[3] = { ih, A ( frame ), 60 };
+		u32 in[3] = { net.ih, A ( frame ), 60 };
 		kv ( "net write(60) returned", ci ( "write", 3, 1, in, 0 ) );
 	}
-	for ( i = 0 ; i < 40 && got < 0 ; i++ ) {
-		u32 in[3] = { ih, A ( rx ), sizeof ( rx ) };
-		int len = ( int ) ci ( "read", 3, 1, in, 0 );
-		if ( len > 0 ) {
-			n++;
-			kv ( "net read frame length", len );
-			kv ( "net rx ethertype",
-			     ( rx[12] << 8 ) | rx[13] );
-			kv ( "net rx arp opcode", rx[21] );
-			if ( rx[12] == 8 && rx[13] == 6 && rx[21] == 2 )
-				got = len;
-		} else {
-			spin ( 50000000 );
-		}
-	}
-	kv ( "net arp reply received", got > 0 );
-	{
-		/* The ARP reply was the only frame: this read finds none */
-		u32 in[3] = { ih, A ( rx ), sizeof ( rx ) };
-		kv ( "net read with no frame waiting returned",
-		     ci ( "read", 3, 1, in, 0 ) );
-	}
-	if ( got > 0 ) {
-		put ( "SPIKE net arp reply sender mac =" );
-		for ( i = 0 ; i < 6 ; i++ ) {
-			put ( " " );
-			puthex ( rx[22 + i] );
-		}
-		put ( "\r\n" );
-	}
-	{ u32 in[1] = { ih }; ci ( "close", 1, 0, in, 0 ); }
+	net_listen ( &net, ( 4 * tb_freq ), 1 );
+	kv ( "net frames seen after send", net.frames );
+	kv ( "net arp reply received", net.replied );
+	kv ( "net reads that returned no frame", net.empty );
+	kv ( "net last no-frame read returned",
+	     ( u64 ) ( long ) net.last_empty );
+	{ u32 in[1] = { net.ih }; ci ( "close", 1, 0, in, 0 ); }
 }
 
 /** RTAS argument block (32-bit big-endian cells) */
@@ -380,34 +597,71 @@ static void rtas_time ( const char *label, u32 entry, u32 base, u32 token ) {
 	put ( "\r\n" );
 }
 
+/**
+ * Instantiate RTAS at a base and read the time through it
+ *
+ * @ret entry		RTAS entry point, or 0 if it cannot be called
+ */
+static u32 rtas_try ( const char *label, u32 ih, u32 base, u32 token ) {
+	u32 entry = 0, status;
+
+	put ( "SPIKE " );
+	put ( label );
+	put ( " base = " );
+	puthex ( base );
+	put ( "\r\n" );
+	if ( base == NONE ) {
+		say ( label, "skipped (no base)" );
+		return 0;
+	}
+	status = rtas_instantiate ( ih, base, &entry );
+	put ( "SPIKE " );
+	put ( label );
+	put ( " instantiate status, entry = " );
+	puthex ( status );
+	put ( " " );
+	puthex ( entry );
+	put ( "\r\n" );
+	if ( ( status != 0 ) || ( entry == 0 ) || ( entry == 0xdead ) ) {
+		say ( label, "call skipped (instantiate failed)" );
+		return 0;
+	}
+	rtas_time ( label, entry, base, token );
+	return entry;
+}
+
 static void probe_rtas ( void ) {
 	u32 node = finddevice ( "/rtas" );
 	u32 size = prop32 ( node, "rtas-size" );
 	u32 token = prop32 ( node, "get-time-of-day" );
-	u32 ih, base1, base2, e1 = 0, e2 = 0, st1, st2;
+	u32 ih, base1, e1;
 	u32 in[1] = { A ( "/rtas" ) };
 
-	kv ( "rtas node phandle", node );
+	kv ( "rtas node present", is_node ( node ) );
 	kv ( "rtas-size", size );
 	kv ( "rtas get-time-of-day token", token );
 	ih = ci ( "open", 1, 1, in, 0 );
-	kv ( "rtas open ihandle", ih );
+	kv ( "rtas open ihandle non-zero", ( ih != 0 ) );
+	if ( ( ! ih ) || ( ! size ) ) {
+		say ( "rtas", "skipped (no instance or size)" );
+		return;
+	}
 	base1 = claim ( 0, size, 0x1000 );
-	kv ( "rtas claim base1", base1 );
-	st1 = rtas_instantiate ( ih, base1, &e1 );
-	kv ( "rtas instantiate #1 status", st1 );
-	kv ( "rtas instantiate #1 entry", e1 );
-	rtas_time ( "rtas#1", e1, base1, token );
-	base2 = claim ( 0, size, 0x1000 );
-	kv ( "rtas claim base2", base2 );
-	st2 = rtas_instantiate ( ih, base2, &e2 );
-	kv ( "rtas instantiate #2 (new base) status", st2 );
-	kv ( "rtas instantiate #2 (new base) entry", e2 );
-	rtas_time ( "rtas#2", e2, base2, token );
-	rtas_time ( "rtas#1 again", e1, base1, token );
-	st2 = rtas_instantiate ( ih, base1, &e2 );
-	kv ( "rtas instantiate #3 (same base) status", st2 );
-	kv ( "rtas instantiate #3 (same base) entry", e2 );
+	e1 = rtas_try ( "rtas#1", ih, base1, token );
+	rtas_try ( "rtas#2 (new base)", ih, claim ( 0, size, 0x1000 ), token );
+	if ( e1 )
+		rtas_time ( "rtas#1 again", e1, base1, token );
+	rtas_try ( "rtas#3 (same base as #1)", ih, base1, token );
+}
+
+/** Execute DARN: on a processor or mode without it, this traps */
+static void probe_darn ( void ) {
+	register u64 value __asm__ ( "r3" );
+
+	put ( "SPIKE darn = executing (a trap ends the run here)\r\n" );
+	__asm__ volatile ( ".long 0x7c6105e6" /* darn r3, 1 */
+			   : "=r" ( value ) );
+	kv ( "darn returned its failure value (all ones)", ( value == ~0UL ) );
 }
 
 void probe_main ( void ) {
@@ -418,11 +672,14 @@ void probe_main ( void ) {
 	getprop ( chosen, "stdout", &stdout_ih, 4 );
 	stdout_ih = bswap32 ( stdout_ih );
 	put ( "SPIKE begin\r\n" );
+	kv ( "msr after first calls", mfmsr() );
 	probe_entry();
 	probe_tree();
 	probe_claim();
 	probe_net();
 	probe_rtas();
+	kv ( "msr before darn", mfmsr() );
+	probe_darn();
 	put ( "SPIKE done\r\n" );
 	ci ( "exit", 0, 0, 0, 0 );
 }

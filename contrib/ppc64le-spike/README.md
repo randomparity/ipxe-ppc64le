@@ -16,8 +16,8 @@ version. Anything not observed is listed under "Not proven".
 | `probe.c` | Probe body: prints `SPIKE ...` result lines |
 | `spike.lds` | Link script: one RWX `PT_LOAD` at `0x400000`, entry after a 24-byte descriptor slot |
 | `mkvariants.py` | Derives ELF class/endianness variants from `spike.elf` (container only) |
-| `run.sh` | Builds the ISO, boots QEMU, captures the console and a packet capture |
-| `Makefile` | `make CROSS=<toolchain prefix>` |
+| `run.sh` | Builds the ISO, boots QEMU, captures the console and a packet capture; `iso` mode only writes the ISOs |
+| `Makefile` | `make CROSS=<toolchain prefix>`: `spike.elf`, and `spike-sf0.elf`, which calls the firmware in 32-bit mode |
 
 ## Build and run
 
@@ -28,8 +28,11 @@ and optionally `tcpdump`.
     cd contrib/ppc64le-spike
     make CROSS=powerpc64le-linux-gnu-
     ./run.sh                      # all ELF variants at 1G, plus 2G and 4G
+    ./run.sh iso [OUTDIR]         # one ISO per ELF, without starting QEMU
 
-`./run.sh ELF [MEM [OUTDIR]]` runs one ELF. Each run leaves
+`./run.sh ELF [MEM [OUTDIR]]` runs one ELF. The `iso` mode is for firmware
+other than QEMU's: it writes `spike-<variant>.iso` for the five variants
+and for `spike-sf0.elf` (default `OUTDIR`: `out/iso`). Each run leaves
 `OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines)
 and `net.pcap`, plus `net.txt` if `tcpdump` is installed. `run.sh` exits non-zero unless every run printed
 `SPIKE done`.
@@ -47,6 +50,15 @@ container or host install that provides it will do.
 The SLOF line citations below are against the upstream tag; that the
 distribution's package build matches that tag is assumed from its
 "release 20220719" banner, not checked.
+
+The probe was later made portable to PowerVM firmware (see "Portable
+probe" below and `../ppc64le/powervm-probe-record.md`). The results in
+sections 1 to 6 were reproduced with it, on QEMU 10.0.13 (Debian 13
+package, default CPU, PVR `0x801200`) and that package's SLOF, "release
+20230918", with the same compiler and binutils: eight runs (the five
+variants at 1G, `le64v2` at 2G and 4G, `spike-sf0.elf` at 1G), each ending
+at `SPIKE done`, in about a minute in all. Where a value below differs in
+that re-run, both are given.
 
 ## Results
 
@@ -92,12 +104,12 @@ backslashes. Use `BOOTINFO=<file> ./run.sh ELF` to repeat.
 
 | Item | Observed |
 |---|---|
-| Load address | `0x400000` (= `p_paddr`); run-time and link-time address of one probe point equal (`0x400094`) |
+| Load address | `0x400000` (= `p_paddr`); run-time and link-time address of one probe point equal (`0x400098`) |
 | `r3`, `r4` | `0`, `0` (initrd start and length; none supplied) |
 | `r5` | `0x3daf04c4`, the client-interface entry. It points at code, not a descriptor: the first dword is `mflr r4; bl ...` |
-| `r6`, `r7` | argument string pointer (`0x3e6886b0`), length `0` |
+| `r6`, `r7` | argument string pointer (`0x3e6886b0`; `0x3e689588` in the re-run), length `0` |
 | `r12`, `r13` | both the entry address; `r2 = 0` |
-| `r1` | `0x3db7b400`, a firmware-provided stack, inside RAM |
+| `r1` | `0x3db7b400` (`0x3db7c400` in the re-run), a firmware-provided stack, inside RAM |
 | MSR | `0x8000000000003001`: SF=1, FP=1, ME=1, LE=1; EE=0, IR=0, DR=0, HV=0 (real mode, interrupts off) |
 | PVR | `0x801200` (QEMU default CPU) |
 
@@ -136,14 +148,16 @@ highest: 1 MiB came back at `0x3fe04000` at 1G and `0x4000` at 4G.
 sender = the node's `local-mac-address`, QEMU's default MAC for the first
 NIC) was sent with `write` (returned 60). Polling `read` returned one
 64-byte frame, ethertype `0x0806`, ARP opcode 2, from the user-mode
-network gateway's MAC (an emulator default). The packet capture agrees:
+network gateway's MAC (an emulator default). The packet capture agrees
+(as re-run: the request is now an ARP probe, with sender address
+`0.0.0.0`):
 
-    52:54:00:12:34:56 > ff:ff:ff:ff:ff:ff, ARP, Request who-has 10.0.2.2 tell 10.0.2.15
+    52:54:00:12:34:56 > ff:ff:ff:ff:ff:ff, ARP, Request who-has 10.0.2.2 tell 0.0.0.0
     52:55:0a:00:02:02 > 52:54:00:12:34:56, ARP, Reply 10.0.2.2 is-at 52:55:0a:00:02:02
 
-(Emulator-default MACs and user-mode network addresses.) A second `read` made
-after the reply, with nothing waiting, returned `0` at once; so `read` does
-not block and callers poll. This matches `veth_receive`, which returns 0
+(Emulator-default MACs and user-mode network addresses.) Every `read` made
+with nothing waiting returned `0` at once (197 of them in the six seconds
+the probe listens); so `read` does not block and callers poll. This matches `veth_receive`, which returns 0
 when no frame is queued (`lib/libveth/veth.c:167-203`, tag above).
 
 ### 5. RTAS
@@ -192,6 +206,38 @@ The endianness polyglot at `_start` is the same mechanism as the kernel's
 its trampoline words were assembled independently and match, apart from
 an added `li r12,1` that marks a big-endian entry. It was
 exercised through the `be64` and `be32` variants (`entered_big_endian = 1`).
+
+### Portable probe
+
+What the probe does so that one binary runs on SLOF and on PowerVM
+firmware, and what that showed on SLOF:
+
+- It walks the device tree and prints each node whose `device_type` is
+  `memory`, `network` or `cpu`, instead of reading `/memory@0` alone. On
+  SLOF: `/cpus/PowerPC,POWER10@0` (`cpu-version` `0x801200`,
+  `timebase-frequency` 512000000), `/vdevice/l-lan@71000003` (`compatible`
+  `IBM,l-lan`) and `/memory@0`, whose `available` property lists the
+  unclaimed ranges. `/ibm,dynamic-reconfiguration-memory` is absent.
+- The real-mode area is taken as the size of the memory node at address 0,
+  and two more 1 MiB claims are made relative to it: at its top (succeeds)
+  and just above it (fails on SLOF with 1G or 2G, where that is the end of RAM;
+  skipped at 4G, which cells cannot address). Claimed
+  memory is written only inside that area.
+- The ARP request is a probe (sender address `0.0.0.0`). The probe first
+  listens for two seconds and, if it sees an ARP packet from another host,
+  asks for that host instead of the QEMU gateway, so no address has to be
+  configured. No frame arrives unasked on the user-mode network, so on
+  QEMU the gateway is asked. MAC and IP addresses, `bootargs` and
+  `bootpath` are not printed (lengths only).
+- The MSR is printed after the first firmware calls and again at the end.
+  On SLOF it is the entry MSR with LE set in every variant, and with
+  `spike-sf0.elf` (calls made with SF and LE clear) SF is set again after
+  each call: SLOF preserves `r30`, from which the return stub reloads it.
+- A failed RTAS `claim` or `instantiate-rtas` is printed and the calls
+  that depend on it are skipped. None fails on SLOF.
+- Last, it executes `darn` (64-bit, conditioned). With QEMU's default CPU
+  it returns a value. On a processor or in a mode without the instruction
+  it traps and the run ends there, which is why it is last.
 
 ### 7. Linux kernel Open Firmware entry contract (tag `v7.0`, commit `028ef9c96e96197026887c0f092424679298aae8`)
 
