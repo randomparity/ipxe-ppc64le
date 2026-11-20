@@ -242,9 +242,10 @@ networking address, netmask, gateway and DNS server, and the pseries
 
 @endcode
 
-Press @c f or @c r at the menu.  A POWER9 or later CPU, such as @c -cpu @c power9, is needed for the
-entropy source (see @ref ppc64le_entropy), and 4GiB holds the largest
-initrd, the kernel and the installer's own memory use.  The installers
+Press @c f or @c r at the menu.  A POWER9 or later CPU, such as @c
+-cpu @c power9, is needed for the entropy source (see @ref
+ppc64le_entropy), and 4GiB holds the largest initrd, the kernel and
+the installer's own memory use.  The installers
 need a few minutes under TCG.  If name lookups time out, the host's
 resolver may not be usable through QEMU's DNS proxy at 10.0.2.3: set @c
 net0/dns to a reachable server.
@@ -260,7 +261,8 @@ A PowerNV platform (OPAL firmware, not part of this work) would reuse
 the following unchanged, and add only what is listed last.
 
 - R1, one ABI and firmware calls in one place.  The ELFv2 little-endian
-  build (@c arch/ppc64le/Makefile, @c bits/ headers, @c core/setjmp.S) is
+  build (@c arch/ppc64le/Makefile, the @c arch/ppc64le/include/bits
+  headers, @c arch/ppc64le/core/setjmp.S) is
   shared by the @c linux and @c ieee1275 platforms.  The Open Firmware
   and RTAS calls are reached only through @c ppc64le_be_call() in @c
   ieee1275_thunk.S, called from @c ieee1275_call.c and @c
@@ -276,9 +278,9 @@ the following unchanged, and add only what is listed last.
   converts the RTAS date format; a PowerNV platform needs its own
   counterparts of these, and its own @c config/defaults file.
 - R5, Linux hand-off in two parts.  The ELF kernel image type
-  (@c image/elfboot.c) and the placement helpers (@c
-  image/ppc64le_kernel.c) make no firmware calls.  The image type calls
-  the four primitives declared in @c ipxe/ppc64le_kernel.h, implemented
+  (@c arch/ppc64le/image/elfboot.c) and the placement helpers (@c
+  arch/ppc64le/image/ppc64le_kernel.c) make no firmware calls.  The
+  image type calls the four primitives declared in @c ipxe/ppc64le_kernel.h, implemented
   for Open Firmware in @c ieee1275_boot.c.  A PowerNV platform
   implements the same four, with a jump that passes a flattened device
   tree instead of the client interface entry point.  The tree would be
