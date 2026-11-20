@@ -148,8 +148,7 @@ seconds since startup, like the null time source, which precedes the
 validity of any certificate.  The clock is otherwise trusted, as on other
 platforms: a stale but plausible hardware clock is not detected, and
 a failed read in the middle of a run steps the clock between real time
-and the tick count.  Defining @c TIME_NULL instead of @c TIME_RTAS in
-@c config/local/ieee1275.h selects the tick count alone.  Under
+and the tick count.  Under
 QEMU, set it with @c -rtc @c base=2031-05-17T08:09:10 and read it with
 @c "echo ${unixtime}".
 
