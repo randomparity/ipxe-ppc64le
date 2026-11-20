@@ -41,6 +41,7 @@ FILE_SECBOOT ( FORBIDDEN );
 #include <ipxe/timer.h>
 #include <ipxe/time.h>
 #include <ipxe/ieee1275_rtas.h>
+#include <ipxe/rtas_date.h>
 
 /** Number of attempts to read the time while RTAS is busy */
 #define RTAS_TIME_TRIES 3
@@ -57,25 +58,6 @@ FILE_SECBOOT ( FORBIDDEN );
 /** RTAS last "extended delay" status */
 #define RTAS_STATUS_DELAY_MAX 9905
 
-/** Earliest year accepted: an earlier reading means an unset clock */
-#define RTAS_YEAR_MIN 2000
-
-/** Latest year accepted */
-#define RTAS_YEAR_MAX 2200
-
-/** Return cells of get-time-of-day */
-enum rtas_time_cell {
-	RTAS_TIME_STATUS = 0,
-	RTAS_TIME_YEAR,
-	RTAS_TIME_MONTH,
-	RTAS_TIME_DAY,
-	RTAS_TIME_HOUR,
-	RTAS_TIME_MINUTE,
-	RTAS_TIME_SECOND,
-	RTAS_TIME_NANOSECOND,
-	RTAS_TIME_CELLS
-};
-
 /**
  * Check whether RTAS status means "try again"
  *
@@ -87,56 +69,6 @@ static int rtas_is_busy ( uint32_t status ) {
 	return ( ( ( int32_t ) status == RTAS_STATUS_BUSY ) ||
 		 ( ( status >= RTAS_STATUS_DELAY_MIN ) &&
 		   ( status <= RTAS_STATUS_DELAY_MAX ) ) );
-}
-
-/**
- * Check whether a year is a leap year
- *
- * @v year		Year
- * @ret is_leap		Year is a leap year
- */
-static int rtas_is_leap ( uint32_t year ) {
-
-	return ( ( ( year % 4 ) == 0 ) &&
-		 ( ( ( year % 100 ) != 0 ) || ( ( year % 400 ) == 0 ) ) );
-}
-
-/**
- * Convert RTAS date and time to broken-down time
- *
- * @v rets		get-time-of-day return cells
- * @v tm		Broken-down time to fill in
- * @ret rc		Return status code
- *
- * Every field is range-checked as an unsigned value before it is
- * narrowed.  Leap seconds are not reported by RTAS and are rejected.
- */
-static int rtas_tm ( const uint32_t *rets, struct tm *tm ) {
-	static const uint8_t days[12] =
-		{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-	uint32_t year = rets[RTAS_TIME_YEAR];
-	uint32_t month = rets[RTAS_TIME_MONTH];
-	uint32_t day = rets[RTAS_TIME_DAY];
-	unsigned int mdays;
-
-	if ( ( year < RTAS_YEAR_MIN ) || ( year > RTAS_YEAR_MAX ) ||
-	     ( month < 1 ) || ( month > 12 ) || ( day < 1 ) ||
-	     ( rets[RTAS_TIME_HOUR] > 23 ) || ( rets[RTAS_TIME_MINUTE] > 59 ) ||
-	     ( rets[RTAS_TIME_SECOND] > 59 ) )
-		return -EINVAL;
-	mdays = days[ month - 1 ];
-	if ( ( month == 2 ) && rtas_is_leap ( year ) )
-		mdays++;
-	if ( day > mdays )
-		return -EINVAL;
-
-	tm->tm_year = ( year - 1900 );
-	tm->tm_mon = ( month - 1 );
-	tm->tm_mday = day;
-	tm->tm_hour = rets[RTAS_TIME_HOUR];
-	tm->tm_min = rets[RTAS_TIME_MINUTE];
-	tm->tm_sec = rets[RTAS_TIME_SECOND];
-	return 0;
 }
 
 /**
@@ -170,7 +102,7 @@ static int rtas_read_time ( time_t *time ) {
 	}
 
 	/* Convert to seconds since the Epoch */
-	if ( ( rc = rtas_tm ( rets, &tm ) ) != 0 ) {
+	if ( ( rc = rtas_time_tm ( rets, &tm ) ) != 0 ) {
 		DBGC ( &rtas_read_time, "RTAS implausible date %u-%u-%u "
 		       "%u:%u:%u\n", rets[RTAS_TIME_YEAR],
 		       rets[RTAS_TIME_MONTH], rets[RTAS_TIME_DAY],

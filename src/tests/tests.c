@@ -98,3 +98,4 @@ REQUIRE_OBJECT ( mime_test );
 REQUIRE_OBJECT ( datauri_test );
 REQUIRE_OBJECT ( tlskey_test );
 REQUIRE_OBJECT ( tlsfmt_test );
+REQUIRE_OBJECT ( rtas_date_test );
