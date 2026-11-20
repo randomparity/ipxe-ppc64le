@@ -19,7 +19,7 @@ line, and "Not proven" lists what the run does not show.
 | iPXE | `1887facad` (ppc64le-support), `bin-ppc64le-ieee1275/ipxe.iso` |
 | Build | `make -C src bin-ppc64le-ieee1275/ipxe.iso CROSS=powerpc64le-linux-gnu- EMBED=<script>` (`CROSS_COMPILE=` is equivalent), GCC 14.2.0 cross compiler in a container |
 | Script | `installer-menu.ipxe`, with one edit (see "Deviations") |
-| Emulator | QEMU 10.2.2 `-M pseries -cpu power9`, TCG, SLOF release 20220719 |
+| Emulator | QEMU 10.2.2 `-M pseries -cpu power9`, TCG, SLOF (console banner: "release 20220719") |
 | Command | `qemu-system-ppc64 -M pseries -cpu power9 -smp 4 -m 4G -nographic -cdrom ipxe.iso -boot d -nic user,model=spapr-vlan` |
 | Input | one key at the menu (`f` or `r`), sent through the console |
 | Fedora | `https://dl.fedoraproject.org/pub/fedora-secondary/releases/44/Server/ppc64le/os`, `ppc/ppc64/vmlinuz` (66 MB), `initrd.img` (225 MB) |

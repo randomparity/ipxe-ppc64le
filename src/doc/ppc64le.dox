@@ -228,14 +228,17 @@ prints the load addresses and the layout.
 that sets a static IPv4 address (no DHCP), shows a menu and boots a
 Fedora or Rocky Linux installer: @c kernel and @c initrd fetched over
 HTTPS from the distribution mirror, and the mirror passed to the
-installer as its repository.  The values that belong to QEMU's user
-networking (address, gateway, DNS server and the @c hvc0 console) are
-marked in the script.  Build and run it with:
+installer as its repository.  The values that belong to QEMU (the user
+networking address, netmask, gateway and DNS server, and the pseries
+@c hvc0 console) are marked in the script.  Build and run it with:
 
 @code
 
-	make -C src CROSS_COMPILE=powerpc64le-linux-gnu- bin-ppc64le-ieee1275/ipxe.iso EMBED=../contrib/ppc64le/installer-menu.ipxe
-	qemu-system-ppc64 -M pseries -cpu power9 -smp 4 -m 4G -nographic -cdrom src/bin-ppc64le-ieee1275/ipxe.iso -boot d -nic user,model=spapr-vlan
+	make -C src CROSS_COMPILE=powerpc64le-linux-gnu- \
+		bin-ppc64le-ieee1275/ipxe.iso EMBED=../contrib/ppc64le/installer-menu.ipxe
+	qemu-system-ppc64 -M pseries -cpu power9 -smp 4 -m 4G -nographic \
+		-cdrom src/bin-ppc64le-ieee1275/ipxe.iso -boot d \
+		-nic user,model=spapr-vlan
 
 @endcode
 
@@ -273,18 +276,20 @@ the following unchanged, and add only what is listed last.
   converts the RTAS date format; a PowerNV platform needs its own
   counterparts of these, and its own @c config/defaults file.
 - R5, Linux hand-off in two parts.  The ELF kernel image type
-  (@c image/elfboot.c) and the placement code (@c image/ppc64le_kernel.c)
-  make no firmware calls.  They call the four primitives declared in @c
-  ipxe/ppc64le_kernel.h, implemented for Open Firmware in @c
-  ieee1275_boot.c.  A PowerNV platform implements the same four, with a
-  jump that passes a flattened device tree instead of the client
-  interface entry point.  The tree would be built by @c fdt_create(),
-  which needs a base tree in @c sysfdt (or an FDT image): nothing in @c
-  arch/ppc64le fills @c sysfdt, so the platform would load the one that
-  OPAL passes.  The placement code does carry one Open Firmware
-  constraint: @c PPC64LE_KERNEL_LIMIT keeps the kernel and initrd below
-  4GiB, the reach of the firmware's 32-bit cells, and a PowerNV platform
-  would have to make it per-platform or accept it.
+  (@c image/elfboot.c) and the placement helpers (@c
+  image/ppc64le_kernel.c) make no firmware calls.  The image type calls
+  the four primitives declared in @c ipxe/ppc64le_kernel.h, implemented
+  for Open Firmware in @c ieee1275_boot.c.  A PowerNV platform
+  implements the same four, with a jump that passes a flattened device
+  tree instead of the client interface entry point.  The tree would be
+  built by @c fdt_create(), which needs a base tree in @c sysfdt (or an
+  FDT image): nothing in @c arch/ppc64le fills @c sysfdt, so the
+  platform would load the one that OPAL passes.  The placement helpers
+  do carry one Open Firmware constraint: @c PPC64LE_KERNEL_LIMIT keeps
+  the initrd region below 4GiB, the reach of the firmware's 32-bit
+  cells, and a PowerNV platform would have to make it per-platform or
+  accept it.  Where the kernel itself is placed is the platform's @c
+  ppc64le_boot_claim().
 
 @section ppc64le_entropy Entropy
 
