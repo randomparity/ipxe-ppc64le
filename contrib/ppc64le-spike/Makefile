@@ -30,6 +30,13 @@ CFLAGS	+= -DRTAS_CALLS=$(RTAS_CALLS)
 
 all : spike.elf spike-sf0.elf
 
+# Rebuild every object when the compiler or its flags change, so that
+# RTAS_CALLS=0 cannot silently reuse objects built with RTAS calls
+.flags : FORCE
+	@echo '$(CC) $(CFLAGS)' | cmp -s - $@ || echo '$(CC) $(CFLAGS)' > $@
+
+FORCE :
+
 spike.elf : entry.o probe.o spike.lds
 	$(CC) $(LDFLAGS) -o $@ entry.o probe.o
 
@@ -37,14 +44,14 @@ spike.elf : entry.o probe.o spike.lds
 spike-sf0.elf : entry-sf0.o probe.o spike.lds
 	$(CC) $(LDFLAGS) -o $@ entry-sf0.o probe.o
 
-entry-sf0.o : entry.S
+entry-sf0.o : entry.S .flags
 	$(CC) $(CFLAGS) -DCALL_SF0 -Wa,-mregnames -c -o $@ $<
 
-%.o : %.S
+%.o : %.S .flags
 	$(CC) $(CFLAGS) -Wa,-mregnames -c -o $@ $<
 
-%.o : %.c
+%.o : %.c .flags
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean :
-	rm -f *.o spike*.elf
+	rm -f *.o spike*.elf .flags

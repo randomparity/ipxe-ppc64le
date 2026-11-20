@@ -714,6 +714,7 @@ void probe_main ( void ) {
 	getprop ( chosen, "stdout", &stdout_ih, 4 );
 	stdout_ih = bswap32 ( stdout_ih );
 	put ( "SPIKE begin\r\n" );
+	kv ( "built with RTAS_CALLS", RTAS_CALLS );
 	kv ( "msr after first calls", mfmsr() );
 
 	/* Firmware need not zero .bss: count what it left, then start clean */

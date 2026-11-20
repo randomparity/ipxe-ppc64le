@@ -228,16 +228,18 @@ The ISO has been booted on a PowerVM logical partition (POWER9,
 partition firmware FW950) from virtual optical media: the firmware reads
 @c /ppc/bootinfo.txt, loads the 64-bit little-endian ELF without a
 wrapper or a CHRP note, and enters it in little-endian mode.  iPXE
-reaches its banner and runs an embedded script.  The ELF must have a
-plain ISO9660 file name: the firmware did not find longer, hyphenated
-Rock Ridge names (@c ipxe.elf is fine).
+reaches its banner and runs an embedded script.  Short file names such
+as @c ipxe.elf are found; the firmware did not find longer, hyphenated
+Rock Ridge names, and which property matters was not determined.
 
-Three things do not work there yet.  The firmware runs BOOTP and then
+Four things do not work there yet.  The firmware runs BOOTP and then
 fails when the network node is opened without arguments, so no network
 device can be opened.  Only about 109MiB of the 256MiB real-mode area
 is free and nothing above it can be claimed, which is less than an
-installer initrd.  And RTAS is unproven: the image that was run had the
-RTAS time and reboot providers replaced by the null providers.  @c
+installer initrd.  The firmware's RTAS image is about 19MiB, above the
+1MiB that the RTAS module accepts, so time, reboot and power off cannot
+work.  And RTAS itself is unproven: the image that was run had the RTAS
+time and reboot providers replaced by the null providers.  @c
 contrib/ppc64le/powervm-probe-record.md has the observations.
 
 @section ppc64le_e2e Installer boot on QEMU

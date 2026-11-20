@@ -34,7 +34,12 @@ and optionally `tcpdump`.
 other than QEMU's: it writes `spike-<variant>.iso` for the five variants
 and for `spike-sf0.elf` (default `OUTDIR`: `out/iso`). In each ISO the
 ELF is `/ppc/spike.elf`: PowerVM firmware did not find files with longer,
-hyphenated Rock Ridge names, so the name is kept a plain ISO9660 one. Each run leaves
+hyphenated Rock Ridge names, so the name is kept a plain ISO9660 one.
+
+For PowerVM, build with `make CROSS=... RTAS_CALLS=0`. The one RTAS
+attempt made there ended the run and its cause is open (#40; see "RTAS" in
+`../ppc64le/powervm-probe-record.md`). The probe's second line,
+`SPIKE built with RTAS_CALLS`, shows which build an ISO holds. Each run leaves
 `OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines)
 and `net.pcap`, plus `net.txt` if `tcpdump` is installed. `run.sh` exits non-zero unless every run printed
 `SPIKE done`.

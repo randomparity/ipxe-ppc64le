@@ -15,7 +15,8 @@
 # Usage: ./run.sh                    build the ELF variants and run them all
 #        ./run.sh ELF [MEM [OUTDIR]] run one ELF
 #        ./run.sh iso [OUTDIR]       only write one ISO per ELF, for firmware
-#                                    other than QEMU's (default OUTDIR: out/iso)
+#                                    other than QEMU's (default OUTDIR: out/iso
+#                                    beside this script)
 #
 # Set BOOTINFO=file to use that /ppc/bootinfo.txt (BOOTINFO=/dev/null: empty).
 # Requires qemu-system-ppc64, xorriso, tcpdump (optional) and python3; the
@@ -33,11 +34,11 @@ VARIANTS="le64v2 le64v1 be64 le32 be32"
 
 make_iso () { # elf outdir: writes outdir/spike.iso
 	elf=$1 out=$2
-	mkdir -p "$out/iso/ppc"
-	cp "$elf" "$out/iso/ppc/spike.elf"
+	mkdir -p "$out/iso/ppc" || return 1
+	cp "$elf" "$out/iso/ppc/spike.elf" || return 1
 	rm -f "$out/iso/ppc/bootinfo.txt"
 	if [ -n "${BOOTINFO:-}" ]; then
-		cp "$BOOTINFO" "$out/iso/ppc/bootinfo.txt"
+		cp "$BOOTINFO" "$out/iso/ppc/bootinfo.txt" || return 1
 	else
 		cat > "$out/iso/ppc/bootinfo.txt" <<'BOOTINFO'
 <chrp-boot>
@@ -76,8 +77,17 @@ run_one () { # elf mem outdir
 	grep -aq 'SPIKE done' "$out/console.log"
 }
 
+absolute () { # path: print it relative to the caller's directory
+	case $1 in
+	/*) echo "$1" ;;
+	*) echo "$PWD/$1" ;;
+	esac
+}
+
 if [ "${1:-}" = iso ]; then
-	dest=${2:-out/iso}
+	dest=$HERE/out/iso
+	[ $# -ge 2 ] && dest=$(absolute "$2")
+	[ -n "${BOOTINFO:-}" ] && BOOTINFO=$(absolute "$BOOTINFO")
 	cd "$HERE" || exit 1
 	mkdir -p out/variants "$dest" || exit 1
 	python3 -I "$HERE/mkvariants.py" spike.elf out/variants || exit 1

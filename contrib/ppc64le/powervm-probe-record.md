@@ -19,7 +19,7 @@ prints no MAC or IP address.
 |---|---|
 | Partition | PowerVM LPAR, POWER9 (PVR `0x004e0202`), `cpu-version` `0x0f000005`, 4 GiB, 0.5 processing units, one virtual processor, one virtual Ethernet adapter, one virtual SCSI adapter for the optical device (and, on the second partition, one for an unused disk) |
 | Firmware | `/openprom` `model`: `IBM,FW950.00 (VL950_039)`; secure boot off |
-| Probe | `contrib/ppc64le-spike` as of the commit before this record, built with `make CROSS=powerpc64le-linux-gnu- RTAS_CALLS=0` (GCC 14.2.0) except for the first RTAS attempt (see "RTAS") |
+| Probe | `contrib/ppc64le-spike` at `b7acf7090`, built with `make CROSS=powerpc64le-linux-gnu- RTAS_CALLS=0` (GCC 14.2.0) except for the first RTAS attempt (see "RTAS") |
 | Probe media | `./run.sh iso`: one ISO per variant, plain ISO9660 with Rock Ridge, `/ppc/bootinfo.txt` and `/ppc/spike.elf` |
 | iPXE | `make -C src bin-ppc64le-ieee1275/ipxe.iso CROSS_COMPILE=powerpc64le-linux-gnu- EMBED=../contrib/ppc64le/installer-menu.ipxe`, source as `ppc64le-support` at `8e9744fff`, with one local change (see "Deviations") |
 | Boot | The ISO loaded into the partition's virtual optical device, that device as the only entry of the boot list, normal-mode activation; some runs instead from the firmware prompt (see "Firmware prompt") |
@@ -31,38 +31,41 @@ hypotheses that turned out wrong (see "ELF acceptance").
 
 ## Deviations
 
-- After the first RTAS attempt (see "RTAS"), no image that can call RTAS
-  was run. The probe was built with `RTAS_CALLS=0`. The iPXE image was built
-  with `config/local/time.h` and `config/local/reboot.h` replacing
+- After the first RTAS attempt (see "RTAS"), no image containing RTAS
+  code was run. The probe was built with `RTAS_CALLS=0`. The iPXE image was
+  built with `config/local/time.h` and `config/local/reboot.h` replacing
   `TIME_RTAS` and `REBOOT_RTAS` by `TIME_NULL` and `REBOOT_NULL`, so that
   `ieee1275_rtas.c` is not linked. The ISO is otherwise what the command
   above produces. The image proven on QEMU, with the RTAS providers, was
-  not run.
+  not run. This was a precaution: read against the code, that image would
+  have refused to instantiate RTAS here (see "RTAS").
 - The `be32` variant was run before the probe's `.bss` handling and network
-  open order were corrected; only its entry state is used here.
+  open order were corrected; its network and `.bss` results are not used.
 
 ## Differences from SLOF
 
 | Area | SLOF | PowerVM firmware | Needs code |
 |---|---|---|---|
 | ELF acceptance | all five variants load and run | `le64v2`, `le32`, `be32` load and run; `le64v1` and `be64` trap at entry | no: iPXE is `le64v2` |
-| File name in `bootinfo.txt` | Rock Ridge name found | only a plain ISO9660 (8.3) name was found | no: `ipxe.elf` qualifies; documented |
+| File name in `bootinfo.txt` | long Rock Ridge name found | short names were found; longer, hyphenated names were not | no: `ipxe.elf` is found; documented |
 | Entry state, `le64v2` | MSR `0x8000000000003001`, `r12 = r13 =` entry | MSR `0x8000000000003003` (RI also set), `r12 =` entry, `r13 = 0` | no |
 | `.bss` | zero at entry | not zeroed | no: `elfprefix.S` zeroes it |
 | Real-mode area | first memory node covers all RAM; `claim` works anywhere in RAM | 256 MiB; the largest free range is about 109 MiB; nothing above it can be claimed | yes: #38 (memory provider) |
-| Network node `open` | plain path or alias opens | plain path or alias runs BOOTP and fails; opens with arguments | yes: #39 (network driver) |
+| Network node `open` | alias opens (iPXE opens the path) | plain path or alias runs BOOTP and fails; opens with arguments | yes: #39 (network driver) |
 | Raw frames | `write`, non-blocking `read` | the same, once open | no |
-| RTAS | instantiates repeatedly; time of day works | not established: the one attempt ended the run | investigation: #40 |
+| RTAS size | `rtas-size` `0x82c` | `rtas-size` `0x1360000`, above iPXE's 1 MiB limit | yes: #41 |
+| RTAS calls | instantiates repeatedly; time of day works | not established: the one attempt ended the run | investigation: #40 |
 | DARN | returns a value (QEMU default CPU) | returns a value in the mode above | no; see #32 |
 
 Epic R8 confines PowerVM fixes to the prefix, the linker script and the
-memory provider. #38 fits (memory provider). #39 does not: the change
-belongs in the network driver. Nothing was found that needs the prefix or
-the linker script to change.
+memory provider. #38 fits (memory provider). #39 and #41 do not: the
+changes belong in the network driver and in the RTAS module. Nothing was
+found that needs the prefix or the linker script to change.
 
 ### ELF acceptance
 
-Booted through `/ppc/bootinfo.txt` in normal mode, each from its own ISO:
+Booted through `/ppc/bootinfo.txt`, each from its own ISO, in normal mode
+except `be32`, which was started from the firmware prompt:
 
 | Variant | ELF class / data | `e_entry` | Result |
 |---|---|---|---|
@@ -184,7 +187,9 @@ waiting returns `0` at once, as on SLOF (#39).
 `get-time-of-day` token of `3`. One attempt was made, on the first
 partition, from the `be32` variant: `claim(any, rtas-size, 4 KiB)` returned
 `0x092a5000`, the lowest address of the free range above the firmware, and
-the probe then called `instantiate-rtas` with that base. The console
+the probe then called `instantiate-rtas` with that base. (That ELF also
+carried a CHRP `PowerPC` note, added while file naming was being ruled
+out.) The console
 printed nothing more from the probe, then
 
     Lost connection to the Managed System...
@@ -192,6 +197,12 @@ printed nothing more from the probe, then
 and the run ended. The step was not repeated and no other RTAS call was
 made, so RTAS on PowerVM is unproven: instantiation, time of day, and a
 second instantiation by a kernel. The cause is not established (#40).
+
+Separately, and from the code rather than a run: `ieee1275_rtas.c` refuses
+an `rtas-size` above `RTAS_MAX_SIZE` (1 MiB) before it claims or
+instantiates anything. With 19 MiB here, iPXE's wall-clock, reboot and
+power-off providers cannot work on this firmware whatever #40 finds, and
+the RTAS image would take 19 MiB of the 109 MiB free range (#41).
 
 ### Processor version and DARN
 
@@ -233,8 +244,8 @@ are from normal-mode activations.
 
 ## Not proven
 
-- RTAS in any form (#40), and therefore the wall clock, reboot and
-  power-off providers and an iPXE image that contains them.
+- RTAS in any form (#40), and an iPXE image that contains the RTAS
+  providers (which the size limit would stop first, #41).
 - Anything after `ibm,client-architecture-support`, including whether it
   restarts the partition (#38).
 - A kernel hand-off, HTTPS, or any fetch (#14).
