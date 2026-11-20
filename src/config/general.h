@@ -193,6 +193,11 @@ FILE_SECBOOT ( PERMITTED );
   #define IMAGE_LKRN		/* Linux kernel image support */
 #endif
 
+/* Image types supported only on Open Firmware platforms */
+#if defined ( PLATFORM_ieee1275 )
+  #define IMAGE_ELF		/* ELF image support */
+#endif
+
 /* Image types supported only on x86 CPUs */
 #if defined ( __i386__ ) || defined ( __x86_64__ )
   //#define IMAGE_UCODE		/* Microcode update image support */
