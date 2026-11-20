@@ -65,6 +65,11 @@ extern int ieee1275_open ( const char *path, ieee1275_ihandle_t *ihandle );
 extern void ieee1275_close ( ieee1275_ihandle_t ihandle );
 extern int ieee1275_claim ( unsigned long virt, size_t size, size_t align,
 			    unsigned long *base );
+extern int ieee1275_call_method ( const char *method,
+				  ieee1275_ihandle_t ihandle,
+				  unsigned int nargs, const ieee1275_cell_t *args,
+				  unsigned int nrets, ieee1275_cell_t *rets );
+extern int ieee1275_release ( unsigned long virt, size_t size );
 extern int ieee1275_getprop ( ieee1275_phandle_t phandle, const char *name,
 			      void *buf, size_t len, size_t *size );
 extern int ieee1275_read ( ieee1275_ihandle_t ihandle, void *data, size_t len );
