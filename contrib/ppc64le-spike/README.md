@@ -33,8 +33,8 @@ and optionally `tcpdump`.
 `./run.sh ELF [MEM [OUTDIR]]` runs one ELF. The `iso` mode is for firmware
 other than QEMU's: it writes `spike-<variant>.iso` for the five variants
 and for `spike-sf0.elf` (default `OUTDIR`: `out/iso`). In each ISO the
-ELF is `/ppc/spike.elf`: PowerVM firmware does not find a file by a Rock
-Ridge name, so the name has to be a plain ISO9660 one. Each run leaves
+ELF is `/ppc/spike.elf`: PowerVM firmware did not find files with longer,
+hyphenated Rock Ridge names, so the name is kept a plain ISO9660 one. Each run leaves
 `OUTDIR/console.log` (the raw evidence), `spike.txt` (the `SPIKE` lines)
 and `net.pcap`, plus `net.txt` if `tcpdump` is installed. `run.sh` exits non-zero unless every run printed
 `SPIKE done`.
