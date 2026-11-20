@@ -89,51 +89,43 @@ int ppc64le_kernel_check ( struct image *image ) {
 }
 
 /**
- * Place the initrd after the kernel
+ * Place the initrd
  *
- * @v kernel_end	End of the loaded kernel
  * @v initrd_len	Length of the initrd, including any cpio headers
  * @v squash_len	Total aligned length of the images that will be
  *			squashed to the top of the region
  * @v region		Region that the initrd may occupy after reshuffling
- * @v initrd		Initrd start address to fill in (zero if no initrd)
+ * @v initrd		Initrd start address to fill in
  * @ret rc		Return status code
  *
- * The initrd starts at the first alignment boundary after the kernel.
- * The images that are not the kernel are squashed against the end of
- * the region before the initrd is copied, so the initrd must end below
- * their lowest address: this keeps every destination clear of every
- * source that has not yet been copied.  The whole kernel and initrd
- * must lie below the limit of the firmware cells.
+ * The kernel is loaded into memory of its own, so the initrd starts
+ * at the start of the region.  The images are squashed against the end
+ * of the region before the initrd is copied, so the initrd must end
+ * below their lowest address: this keeps every destination clear of
+ * every source that has not yet been copied.  The whole region must
+ * lie below the limit of the firmware cells.
  */
-int ppc64le_kernel_layout ( uint64_t kernel_end, size_t initrd_len,
-			    size_t squash_len,
+int ppc64le_kernel_layout ( size_t initrd_len, size_t squash_len,
 			    const struct memmap_region *region,
 			    uint64_t *initrd ) {
 	uint64_t limit;
 	uint64_t start;
 
-	/* Check the region and the end of the kernel */
+	/* Check the region */
 	if ( ( region->max >= PPC64LE_KERNEL_LIMIT ) ||
 	     ( region->min > region->max ) )
 		return -ERANGE;
 	limit = ( region->max + 1 );
-	if ( ( kernel_end < region->min ) || ( kernel_end > limit ) )
-		return -ERANGE;
-
-	/* No initrd needs no space */
-	*initrd = 0;
-	if ( ! initrd_len )
-		return 0;
 
 	/* The squashed images occupy the end of the region */
 	if ( squash_len > ( limit - region->min ) )
 		return -ENOSPC;
 	limit -= squash_len;
 
-	/* Place the initrd after the kernel and below the squashed images */
-	start = initrd_align ( kernel_end );
-	if ( ( start > limit ) || ( initrd_len > ( limit - start ) ) )
+	/* Place the initrd at the start of the region */
+	start = initrd_align ( region->min );
+	if ( ( start < region->min ) || ( start > limit ) ||
+	     ( initrd_len > ( limit - start ) ) )
 		return -ENOSPC;
 	*initrd = start;
 

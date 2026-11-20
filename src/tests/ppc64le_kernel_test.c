@@ -69,7 +69,6 @@ static int ppc64le_kernel_test_check ( const Elf64_Ehdr *ehdr, size_t len ) {
 /**
  * Check a region layout
  *
- * @v kernel_end	End of kernel
  * @v initrd_len	Length of initrd
  * @v squash_len	Length of squashed images
  * @v min		Start of region
@@ -77,8 +76,7 @@ static int ppc64le_kernel_test_check ( const Elf64_Ehdr *ehdr, size_t len ) {
  * @v initrd		Initrd address to fill in
  * @ret rc		Return status code
  */
-static int ppc64le_kernel_test_layout ( uint64_t kernel_end,
-					size_t initrd_len, size_t squash_len,
+static int ppc64le_kernel_test_layout ( size_t initrd_len, size_t squash_len,
 					uint64_t min, uint64_t max,
 					uint64_t *initrd ) {
 	struct memmap_region region;
@@ -86,8 +84,8 @@ static int ppc64le_kernel_test_layout ( uint64_t kernel_end,
 	memmap_init ( min, &region );
 	region.max = max;
 	region.flags = MEMMAP_FL_MEMORY;
-	return ppc64le_kernel_layout ( kernel_end, initrd_len, squash_len,
-				       &region, initrd );
+	return ppc64le_kernel_layout ( initrd_len, squash_len, &region,
+				       initrd );
 }
 
 /**
@@ -128,61 +126,60 @@ static void ppc64le_kernel_test_exec ( void ) {
 	ehdr.e_ident[EI_MAG0] = 0;
 	ok ( ppc64le_kernel_test_check ( &ehdr, sizeof ( ehdr ) ) != 0 );
 
-	/* No initrd needs no space, even when the kernel fills the region */
-	ok ( ppc64le_kernel_test_layout ( 0x10000000, 0, 0, 0x8000000,
-					  0xfffffff, &initrd ) == 0 );
-	ok ( initrd == 0 );
-	ok ( ppc64le_kernel_test_layout ( 0x10000000, 0, 0x100000, 0x8000000,
-					  0xfffffff, &initrd ) == 0 );
-
-	/* The initrd follows the kernel at the next alignment boundary */
-	ok ( ppc64le_kernel_test_layout ( 0x8000001, 0x1000, 0, 0x8000000,
-					  0xfffffff, &initrd ) == 0 );
-	ok ( initrd == 0x8001000 );
+	/* The initrd starts at the start of the region, whether or not
+	 * there is one
+	 */
+	ok ( ppc64le_kernel_test_layout ( 0, 0, 0x8000000, 0xfffffff,
+					  &initrd ) == 0 );
+	ok ( initrd == 0x8000000 );
+	ok ( ppc64le_kernel_test_layout ( 0x1000, 0, 0x8000000, 0xfffffff,
+					  &initrd ) == 0 );
+	ok ( initrd == 0x8000000 );
 
 	/* An initrd that exactly fits the space before the squashed
 	 * images is accepted, and one byte more is not
 	 */
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, 0x7f00000, 0x100000,
-					  0x8000000, 0xfffffff, &initrd ) == 0 );
-	ok ( initrd == 0x8000000 );
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, 0x7f00001, 0x100000,
-					  0x8000000, 0xfffffff, &initrd ) != 0 );
+	ok ( ppc64le_kernel_test_layout ( 0x7f00000, 0x100000, 0x8000000,
+					  0xfffffff, &initrd ) == 0 );
+	ok ( ppc64le_kernel_test_layout ( 0x7f00001, 0x100000, 0x8000000,
+					  0xfffffff, &initrd ) != 0 );
 
 	/* The initrd length is not the sum of the aligned image lengths:
 	 * cpio headers can make it longer
 	 */
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, 0x7f01000, 0x100000,
-					  0x8000000, 0xfffffff, &initrd ) != 0 );
+	ok ( ppc64le_kernel_test_layout ( 0x7f01000, 0x100000, 0x8000000,
+					  0xfffffff, &initrd ) != 0 );
 
-	/* Squashed images larger than the region are rejected */
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, 0x1000, 0x8000001,
-					  0x8000000, 0xfffffff, &initrd ) != 0 );
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, 0x1000, ~( ( size_t ) 0 ),
-					  0x8000000, 0xfffffff, &initrd ) != 0 );
-
-	/* A kernel outside the region is rejected, as is a kernel whose
-	 * initrd would start past the end of the region
+	/* Squashed images larger than the region are rejected, even
+	 * with no initrd
 	 */
-	ok ( ppc64le_kernel_test_layout ( 0x7ffffff, 0, 0, 0x8000000,
+	ok ( ppc64le_kernel_test_layout ( 0, 0x8000001, 0x8000000,
 					  0xfffffff, &initrd ) != 0 );
-	ok ( ppc64le_kernel_test_layout ( 0x10000001, 0, 0, 0x8000000,
-					  0xfffffff, &initrd ) != 0 );
-	ok ( ppc64le_kernel_test_layout ( 0xfffffff, 0x1000, 0, 0x8000000,
-					  0xfffffff, &initrd ) != 0 );
+	ok ( ppc64le_kernel_test_layout ( 0x1000, ~( ( size_t ) 0 ),
+					  0x8000000, 0xfffffff,
+					  &initrd ) != 0 );
+
+	/* An unaligned region start is rounded up and must leave room */
+	ok ( ppc64le_kernel_test_layout ( 0x1000, 0, 0x8000001, 0x8001fff,
+					  &initrd ) == 0 );
+	ok ( initrd == 0x8001000 );
+	ok ( ppc64le_kernel_test_layout ( 0x1000, 0, 0x8000001, 0x8000fff,
+					  &initrd ) != 0 );
 
 	/* Lengths that would wrap the address space are rejected */
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, ~( ( size_t ) 0 ), 0,
-					  0x8000000, 0xfffffff, &initrd ) != 0 );
-	ok ( ppc64le_kernel_test_layout ( ~( ( uint64_t ) 0 ), 0x1000, 0,
-					  0x8000000, 0xfffffff, &initrd ) != 0 );
+	ok ( ppc64le_kernel_test_layout ( ~( ( size_t ) 0 ), 0, 0x8000000,
+					  0xfffffff, &initrd ) != 0 );
 
-	/* Regions beyond the reach of the firmware are rejected */
-	ok ( ppc64le_kernel_test_layout ( 0x8000000, 0x1000, 0, 0x8000000,
+	/* Regions beyond the reach of the firmware, or inverted, are
+	 * rejected, and the last page below 4GiB is usable
+	 */
+	ok ( ppc64le_kernel_test_layout ( 0x1000, 0, 0x8000000,
 					  0x100000000ULL, &initrd ) != 0 );
-	ok ( ppc64le_kernel_test_layout ( 0xf0000000, 0x1000, 0, 0x8000000,
+	ok ( ppc64le_kernel_test_layout ( 0x1000, 0, 0x9000000, 0x8000000,
+					  &initrd ) != 0 );
+	ok ( ppc64le_kernel_test_layout ( 0x1000, 0, 0xfffff000,
 					  0xffffffffULL, &initrd ) == 0 );
-	ok ( initrd == 0xf0000000 );
+	ok ( initrd == 0xfffff000 );
 }
 
 /** ppc64le kernel self-test */

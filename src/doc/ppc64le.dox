@@ -163,6 +163,55 @@ shutdown function, including the network devices.  Building with
 @c DEBUG=ieee1275_rtas,ieee1275_rtas_time,ieee1275_rtas_reboot prints
 the instantiation, each failure and the release.
 
+@subsection ppc64le_ieee1275_boot Booting a Linux kernel
+
+The @c kernel, @c initrd and @c boot commands start a little-endian
+64-bit PowerPC ELF kernel, such as the @c vmlinuz of a distribution
+installer (check with @c file that it is an ELF executable and not
+compressed).  An image whose machine, class, byte order or file type is
+not that of such a kernel is refused by @c kernel as not executable.
+Every other registered image, such as an @c initrd, is loaded as part
+of the initrd, in order.  The kernel command line is the one given to
+@c kernel (or set with @c imgargs).  For example:
+
+@code
+
+	dhcp
+	kernel http://server/vmlinuz console=hvc0
+	initrd http://server/initrd.img
+	boot
+
+@endcode
+
+The kernel is loaded at the start of the largest free region of the
+claimed memory, rounded up to 1MiB, which is above the iPXE image and
+the 128MiB left unclaimed (see @ref ppc64le_ieee1275_memory).  A
+relocatable kernel copies itself to physical address zero, so it does
+not need to be loaded there.  The initrd is copied to the next page
+after the kernel, which must be below the images that were downloaded
+(they are squashed to the top of the heap before the copy).  A kernel
+or initrd that does not fit is refused before anything is shut down.
+
+Everything that can fail is done before iPXE shuts down: the kernel is
+loaded and its instruction cache flushed, the layout is checked, and
+the command line is stored in the @c bootargs property of @c /chosen.
+Shutdown then closes the network devices (unless something holds @c
+device_keep_count, as @c sanboot does) and releases RTAS, after which
+the initrd is placed and the kernel is entered with the initrd address
+and length in @c r3 and @c r4 and the firmware's client interface entry
+point in @c r5, as the firmware itself would.  The last firmware call
+releases the heap claim above the kernel and initrd, which the kernel
+needs in order to claim memory for itself.  A failed release is logged
+and ignored.
+
+Loading and placement are shared by all @c ppc64le platforms; the two
+platform primitives are @c ppc64le_boot_prepare() and @c
+ppc64le_boot_jump().  A platform that passes a flattened device tree
+instead of a client interface supplies its own.  Only SLOF on QEMU has
+been tested: PowerVM, and the firmware's capability negotiation, are not
+covered.  Building with @c DEBUG=elfboot,ppc64le_kernel,ieee1275_boot
+prints the load addresses and the layout.
+
 @section ppc64le_entropy Entropy
 
 The entropy source for both platforms is the @c DARN instruction,

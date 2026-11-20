@@ -64,6 +64,9 @@ extern char _end[];
  */
 #define IEEE1275_MEMMAP_LOW ( 128 * 1024 * 1024 )
 
+/** Alignment of memory claimed for a kernel */
+#define IEEE1275_MEMMAP_KALIGN ( 1 << 20 )
+
 /** Maximum number of memory ranges */
 #define IEEE1275_MEMMAP_MAX 16
 
@@ -94,6 +97,12 @@ static uint64_t ieee1275_start = IEEE1275_MEMMAP_LIMIT;
 
 /** End of claimed memory */
 static uint64_t ieee1275_end = IEEE1275_MEMMAP_LIMIT;
+
+/** Start of memory claimed for a kernel (empty if equal to end) */
+static uint64_t ieee1275_kstart;
+
+/** End of memory claimed for a kernel */
+static uint64_t ieee1275_kend;
 
 /**
  * Read a value from property cells
@@ -309,6 +318,65 @@ static void ieee1275_memmap_init ( void ) {
 
 	/* Claim memory for the external heap */
 	ieee1275_claim_heap ( avail, navail );
+	ieee1275_kstart = ieee1275_kend = ieee1275_start;
+}
+
+/**
+ * Claim memory for a kernel
+ *
+ * @v size		Size of kernel
+ * @v base		Base address of claimed memory to fill in
+ * @ret rc		Return status code
+ *
+ * The memory is claimed from the unclaimed low memory that the heap
+ * claim leaves for the firmware's clients: at the first megabyte
+ * boundary above the iPXE image, where the firmware refuses a claim
+ * that overlaps anything else.  Once claimed it is reported as usable,
+ * so that an image can be loaded into it.  The kernel owns the memory
+ * until the next kernel claim, release or boot.
+ */
+int ieee1275_memmap_claim_kernel ( uint64_t size, uint64_t *base ) {
+	uint64_t start;
+	unsigned long claimed;
+	int rc;
+
+	/* Initialise on first use, so that the heap claim exists */
+	if ( ! ieee1275_memmap_ready )
+		ieee1275_memmap_init();
+	ieee1275_memmap_release_kernel();
+
+	/* Claim memory at the first boundary above the image */
+	start = ( ( virt_to_phys ( _end ) + IEEE1275_MEMMAP_KALIGN - 1 ) &
+		  ~( ( uint64_t ) IEEE1275_MEMMAP_KALIGN - 1 ) );
+	size = ( ( size + PAGE_SIZE - 1 ) & ~( ( uint64_t ) PAGE_SIZE - 1 ) );
+	if ( ( ! size ) || ( start > ieee1275_start ) ||
+	     ( size > ( ieee1275_start - start ) ) )
+		return -ENOSPC;
+	if ( ( rc = ieee1275_claim ( start, size, 0, &claimed ) ) != 0 )
+		return rc;
+	if ( claimed != start ) {
+		ieee1275_release ( claimed, size );
+		return -ENOMEM;
+	}
+	ieee1275_kstart = start;
+	ieee1275_kend = ( start + size );
+	*base = start;
+	DBGC ( &ieee1275_ram, "IEEE1275MEM kernel claimed [%#08llx,%#08llx)\n",
+	       ( ( unsigned long long ) ieee1275_kstart ),
+	       ( ( unsigned long long ) ieee1275_kend ) );
+	return 0;
+}
+
+/**
+ * Release memory claimed for a kernel
+ *
+ */
+void ieee1275_memmap_release_kernel ( void ) {
+
+	if ( ieee1275_kstart == ieee1275_kend )
+		return;
+	ieee1275_release ( ieee1275_kstart, ( ieee1275_kend - ieee1275_kstart ) );
+	ieee1275_kstart = ieee1275_kend = ieee1275_start;
 }
 
 /**
@@ -364,7 +432,10 @@ static void ieee1275_memmap_describe ( uint64_t min, int hide,
 				ieee1275_ram[i].size, MEMMAP_FL_MEMORY,
 				"memory" );
 	}
-	memmap_update ( region, 0, ieee1275_start, MEMMAP_FL_RESERVED,
+	memmap_update ( region, 0, ieee1275_kstart, MEMMAP_FL_RESERVED,
+			"unclaimed" );
+	memmap_update ( region, ieee1275_kend,
+			( ieee1275_start - ieee1275_kend ), MEMMAP_FL_RESERVED,
 			"unclaimed" );
 	memmap_update ( region, ieee1275_end, -ieee1275_end,
 			MEMMAP_FL_RESERVED, "unclaimed" );

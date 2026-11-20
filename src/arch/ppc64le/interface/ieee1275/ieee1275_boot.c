@@ -44,6 +44,27 @@ FILE_SECBOOT ( FORBIDDEN );
 #define IEEE1275_BOOTARGS_MAX 4096
 
 /**
+ * Claim memory for a kernel
+ *
+ * @v size		Size of kernel
+ * @v base		Base address to fill in
+ * @ret rc		Return status code
+ */
+int ppc64le_boot_claim ( size_t size, uint64_t *base ) {
+
+	return ieee1275_memmap_claim_kernel ( size, base );
+}
+
+/**
+ * Release memory claimed for a kernel
+ *
+ */
+void ppc64le_boot_unclaim ( void ) {
+
+	ieee1275_memmap_release_kernel();
+}
+
+/**
  * Prepare the firmware for a kernel
  *
  * @v cmdline		Kernel command line, or NULL
